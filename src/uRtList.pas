@@ -9,6 +9,9 @@ unit uRtList;
 // adapte aux dizaines de milliers de resultats) ou valeurs stockees. Avec
 // FillWidth, les colonnes occupent toute la largeur en gardant leurs
 // proportions (celles qu'impose l'utilisateur en les redimensionnant).
+// Avec Sortable, un clic sur un en-tete trie l'affichage par cette colonne
+// (un second clic inverse l'ordre); les indices exposes (ItemIndex,
+// OnSelectRow, OnActivateRow, CellText) restent ceux des donnees.
 
 interface
 
@@ -35,6 +38,14 @@ type
     FFitting: Boolean;
     FOnActivateRow: TRtSelectEvent;
     FOnGetCellIcon: TRtGetCellIconEvent;
+    FSortable: Boolean;
+    FSortCol: Integer;            // -1: ordre des donnees
+    FSortDesc: Boolean;
+    FOrder: array of Integer;     // ligne affichee -> indice de donnee (vide: identite)
+    FPlace: array of Integer;     // indice de donnee -> ligne affichee
+    function DataIndex(ADisplay: Integer): Integer;
+    function DisplayIndex(AData: Integer): Integer;
+    procedure ApplySort;
     procedure SetCount(AValue: Integer);
     procedure SetFillWidth(AValue: Boolean);
     procedure FitColumns;
@@ -50,6 +61,7 @@ type
     procedure DblClick; override;
     procedure Click; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure HeaderClick(IsColumn: Boolean; index: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -71,12 +83,18 @@ type
     property OnGetCellIcon: TRtGetCellIconEvent read FOnGetCellIcon write FOnGetCellIcon;
     // icone d'une cellule de donnees ('' sans OnGetCellIcon)
     function CellIcon(AIndex, ACol: Integer; out AColor: TColor): string;
+    // tri de l'affichage (ACol -1: ordre des donnees); la ligne selectionnee
+    // reste la meme donnee
+    procedure SortBy(ACol: Integer; ADescending: Boolean);
+    property Sortable: Boolean read FSortable write FSortable;
+    property SortedColumn: Integer read FSortCol;
+    property SortedDescending: Boolean read FSortDesc;
   end;
 
 implementation
 
 uses
-  Forms, uTheme, uIcons;
+  Forms, LazUTF8, uTheme, uIcons;
 
 const
   // icone de cellule (taille logique)
@@ -96,6 +114,7 @@ begin
   FCaptions := TStringList.Create;
   FRows := TList.Create;
   FLastSelected := -1;
+  FSortCol := -1;
   FixedCols := 0;
   ColCount := 1;
   RowCount := 1;
@@ -208,7 +227,7 @@ begin
   pt := ScreenToClient(Mouse.CursorPos);
   MouseToCell(pt.X, pt.Y, c, r);
   if (r >= 1) and (r - 1 < FCount) and Assigned(FOnActivateRow) then
-    FOnActivateRow(Self, r - 1);
+    FOnActivateRow(Self, DataIndex(r - 1));
 end;
 
 // Clic sur la ligne deja courante (celle surlignee apres un remplissage):
@@ -252,8 +271,145 @@ procedure TRtListGrid.SetCount(AValue: Integer);
 begin
   if AValue < 0 then AValue := 0;
   FCount := AValue;
+  FOrder := nil;
+  FPlace := nil;
   RowCount := FCount + 1;
+  // nouvelles donnees: l'ordre choisi s'applique encore
+  if FSortCol >= 0 then ApplySort;
   Invalidate;
+end;
+
+function TRtListGrid.DataIndex(ADisplay: Integer): Integer;
+begin
+  if (ADisplay >= 0) and (ADisplay < Length(FOrder)) then
+    Result := FOrder[ADisplay]
+  else
+    Result := ADisplay;
+end;
+
+function TRtListGrid.DisplayIndex(AData: Integer): Integer;
+begin
+  if (AData >= 0) and (AData < Length(FPlace)) then
+    Result := FPlace[AData]
+  else
+    Result := AData;
+end;
+
+// Texte ou nombre: deux entiers se comparent par leur valeur, le reste sans
+// tenir compte de la casse
+function CompareCellTexts(const A, B: string): Integer;
+var
+  na, nb: Int64;
+begin
+  if TryStrToInt64(Trim(A), na) and TryStrToInt64(Trim(B), nb) then
+  begin
+    if na < nb then Exit(-1);
+    if na > nb then Exit(1);
+    Exit(0);
+  end;
+  Result := UTF8CompareText(A, B);
+  if Result = 0 then Result := CompareStr(A, B);
+end;
+
+procedure TRtListGrid.ApplySort;
+var
+  keys: array of string;
+  src, tmp: array of Integer;
+  i, n, span, lo, mid, hi, a, b, k, c: Integer;
+  sel: Integer;
+begin
+  sel := ItemIndex;
+  FOrder := nil;
+  FPlace := nil;
+  if (FSortCol >= 0) and (FCount > 1) then
+  begin
+    n := FCount;
+    keys := nil;
+    SetLength(keys, n);
+    for i := 0 to n - 1 do
+      keys[i] := CellText(i, FSortCol);
+    src := nil;
+    tmp := nil;
+    SetLength(src, n);
+    SetLength(tmp, n);
+    for i := 0 to n - 1 do
+      src[i] := i;
+    // tri fusion stable: les egaux gardent l'ordre des donnees
+    span := 1;
+    while span < n do
+    begin
+      lo := 0;
+      while lo < n do
+      begin
+        mid := lo + span;
+        if mid > n then mid := n;
+        hi := lo + 2 * span;
+        if hi > n then hi := n;
+        a := lo;
+        b := mid;
+        k := lo;
+        while (a < mid) and (b < hi) do
+        begin
+          c := CompareCellTexts(keys[src[a]], keys[src[b]]);
+          if FSortDesc then c := -c;
+          if c <= 0 then
+          begin
+            tmp[k] := src[a];
+            Inc(a);
+          end
+          else
+          begin
+            tmp[k] := src[b];
+            Inc(b);
+          end;
+          Inc(k);
+        end;
+        while a < mid do
+        begin
+          tmp[k] := src[a];
+          Inc(a);
+          Inc(k);
+        end;
+        while b < hi do
+        begin
+          tmp[k] := src[b];
+          Inc(b);
+          Inc(k);
+        end;
+        lo := hi;
+      end;
+      for i := 0 to n - 1 do
+        src[i] := tmp[i];
+      span := span * 2;
+    end;
+    FOrder := src;
+    SetLength(FPlace, n);
+    for i := 0 to n - 1 do
+      FPlace[FOrder[i]] := i;
+  end;
+  // meme donnee selectionnee, a sa nouvelle place (aucun evenement: c'est
+  // deja la derniere signalee)
+  if (sel >= 0) and (sel < FCount) then
+    Row := DisplayIndex(sel) + 1;
+  Invalidate;
+end;
+
+procedure TRtListGrid.SortBy(ACol: Integer; ADescending: Boolean);
+begin
+  if ACol >= ColCount then ACol := -1;
+  FSortCol := ACol;
+  FSortDesc := ADescending;
+  ApplySort;
+end;
+
+procedure TRtListGrid.HeaderClick(IsColumn: Boolean; index: Integer);
+begin
+  inherited HeaderClick(IsColumn, index);
+  if not FSortable or not IsColumn or (index < 0) or (index >= ColCount) then Exit;
+  if index = FSortCol then
+    SortBy(index, not FSortDesc)
+  else
+    SortBy(index, False);
 end;
 
 procedure TRtListGrid.Clear;
@@ -294,13 +450,13 @@ begin
   if (FCount = 0) or (Row < 1) then
     Result := -1
   else
-    Result := Row - 1;
+    Result := DataIndex(Row - 1);
 end;
 
 procedure TRtListGrid.SetItemIndex(AValue: Integer);
 begin
   if (AValue >= 0) and (AValue < FCount) then
-    Row := AValue + 1;
+    Row := DisplayIndex(AValue) + 1;
 end;
 
 procedure TRtListGrid.SelectionChanged;
@@ -324,7 +480,7 @@ procedure TRtListGrid.DrawCell(ACol, ARow: Longint; ARect: TRect; AState: TGridD
 var
   s, iconId: string;
   ts: TTextStyle;
-  textLeft, px: Integer;
+  textLeft, textRight, px, cx, cy, h: Integer;
   iconColor: TColor;
   bmp: TBitmap;
 begin
@@ -348,7 +504,7 @@ begin
       Canvas.Font.Color := clAppFg;
     end;
     if ARow - 1 < FCount then
-      s := CellText(ARow - 1, ACol)
+      s := CellText(DataIndex(ARow - 1), ACol)
     else
       s := '';
   end;
@@ -361,9 +517,25 @@ begin
     Canvas.Line(ARect.Left, ARect.Bottom - 1, ARect.Right, ARect.Bottom - 1);
   end;
   textLeft := ARect.Left + 6;
+  textRight := ARect.Right - 4;
+  if (ARow = 0) and (ACol = FSortCol) then
+  begin
+    // colonne de tri: triangle vers le haut (croissant) ou le bas
+    h := (ARect.Bottom - ARect.Top) div 5;
+    if h < 3 then h := 3;
+    cx := ARect.Right - 8 - h;
+    cy := (ARect.Top + ARect.Bottom) div 2;
+    Canvas.Pen.Color := clSideTextHi;
+    Canvas.Brush.Color := clSideTextHi;
+    if FSortDesc then
+      Canvas.Polygon([Point(cx - h, cy - h div 2), Point(cx + h, cy - h div 2), Point(cx, cy + h div 2 + 1)])
+    else
+      Canvas.Polygon([Point(cx - h, cy + h div 2), Point(cx + h, cy + h div 2), Point(cx, cy - h div 2 - 1)]);
+    textRight := cx - h - 4;
+  end;
   if ARow > 0 then
   begin
-    iconId := CellIcon(ARow - 1, ACol, iconColor);
+    iconId := CellIcon(DataIndex(ARow - 1), ACol, iconColor);
     if iconId <> '' then
     begin
       px := ScreenIconSize(CELL_ICON);
@@ -379,7 +551,7 @@ begin
   ts.Clipping := True;
   ts.EndEllipsis := True;
   ts.Opaque := False;
-  Canvas.TextRect(Classes.Rect(textLeft, ARect.Top, ARect.Right - 4, ARect.Bottom),
+  Canvas.TextRect(Classes.Rect(textLeft, ARect.Top, textRight, ARect.Bottom),
     textLeft, ARect.Top, s, ts);
 end;
 
