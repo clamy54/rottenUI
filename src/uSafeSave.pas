@@ -482,8 +482,11 @@ var
   cur: string;
 begin
   // chaque prefixe est resolu a son tour: un lien intermediaire compte aussi
+  // (variable intermediaire: FPC 3.2.4/Darwin refuse le helper sur le
+  // resultat direct d'ExpandFileName)
+  cur := ExpandFileName(APath);
+  parts := cur.Split(['/']);
   cur := '';
-  parts := ExpandFileName(APath).Split(['/']);
   for i := 0 to High(parts) do
   begin
     if parts[i] = '' then Continue;
@@ -704,8 +707,12 @@ var
 begin
   for i := 1 to 20 do
   begin
+    // 32 bits de poids faible passes en Int64: un LongWord devient un
+    // vtInteger dans l'array of const et -Cr refuse alors toute valeur
+    // >= 2^31 (GetTickCount64 compte depuis l'epoque Unix sous Darwin, et
+    // depuis le demarrage ailleurs: 24,8 jours suffisent)
     ATmpName := Format('%s.rtt%.8x%.4x.tmp',
-      [ADest, LongWord(GetTickCount64), Random($10000)]);
+      [ADest, Int64(GetTickCount64 and $FFFFFFFF), Random($10000)]);
     h := ExclusiveCreate(ATmpName);
     if h <> THandle(-1) then
       Exit(TOwnedHandleStream.Create(h));

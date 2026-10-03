@@ -3,6 +3,7 @@
 unit uUiKit;
 
 {$mode objfpc}{$H+}
+{$IFDEF LCLCocoa}{$modeswitch objectivec1}{$ENDIF}
 
 // Construction par code des controles (pas de .lfm, comme dans RottenSSHrimp)
 // et dialogue de base. Comme dans RottenSSHrimp, la coque et ses onglets sont
@@ -136,6 +137,15 @@ procedure ThemeSplitter(ASplitter: TSplitter);
 // Barres de defilement et en-tetes natifs sombres ou clairs selon le fond du
 // theme (Windows 10 1809+); sans effet ailleurs
 procedure ApplyNativeDarkMode(AControl: TWinControl);
+// macOS: apparence de toute l'application (Aqua ou DarkAqua) selon le fond du
+// theme: listes, boutons, cases et textes desactives natifs suivent; sans
+// effet ailleurs. A rappeler a chaque changement de theme.
+procedure ApplyNativeAppearance;
+// Retrait d'un arbre: au moins le signe plus/moins et 3 px de chaque cote,
+// quels que soient la police et la mise a l'echelle (le retrait par defaut de
+// la LCL en depend), pour que le signe de la racine ne touche jamais le bord.
+// A rappeler apres tout changement de police.
+procedure FitTreeIndent(ATree: TTreeView);
 procedure SelectPage(APages: TPageControl; AIndex: Integer);
 // Couleur d'etat des dialogues (themes comme la coque: ShellStateColor)
 function DialogStateColor(AState: TUiState): TColor;
@@ -145,7 +155,9 @@ function ShellStateColor(AState: TUiState): TColor;
 implementation
 
 uses
-  {$IFDEF WINDOWS}Windows, UxTheme,{$ENDIF} uFontEmbed, uRtCombo, uIcons;
+  {$IFDEF WINDOWS}Windows, UxTheme,{$ENDIF}
+  {$IFDEF LCLCocoa}CocoaAll, cocoa_extra,{$ENDIF}
+  uFontEmbed, uRtCombo, uIcons;
 
 const
   // icone d'en-tete de dialogue (taille logique)
@@ -367,7 +379,11 @@ var
   GFieldPainter: TFieldPainter = nil;
 
 const
-  PAGE_BORDER_CLIP = 4;
+  // cadre natif d'un TPageControl sans onglets, rogne par l'hote: Windows et
+  // GTK en dessinent un; Cocoa non (NSNoTabsNoBorder), ou rogner 4 px
+  // cacherait le bord gauche de tout le contenu (signes de l'arbre, premiere
+  // colonne des listes, cases a cocher)
+  PAGE_BORDER_CLIP = {$IFDEF LCLCocoa}0{$ELSE}4{$ENDIF};
   // marge d'une zone de texte dans son cadre arrondi
   MEMO_FRAME = 4;
 
@@ -502,6 +518,28 @@ begin
 end;
 {$ELSE}
 procedure ApplyNativeDarkMode(AControl: TWinControl);
+begin
+end;
+{$ENDIF}
+
+procedure FitTreeIndent(ATree: TTreeView);
+begin
+  if ATree.Indent < ATree.ExpandSignSize + 6 then
+    ATree.Indent := ATree.ExpandSignSize + 6;
+end;
+
+procedure ApplyNativeAppearance;
+{$IFDEF LCLCocoa}
+var
+  name: string;
+begin
+  if NSApp = nil then Exit;
+  if IsDarkColor(clAppBg) then name := 'NSAppearanceNameDarkAqua'
+  else name := 'NSAppearanceNameAqua';
+  NSApp.setAppearance(NSAppearance.appearanceNamed(
+    NSString.stringWithUTF8String(PChar(name))));
+end;
+{$ELSE}
 begin
 end;
 {$ENDIF}
@@ -961,6 +999,8 @@ begin
         ExpandSignColor := BlendColor(clSideText, clSideBg, 60);
         TreeLineColor := BlendColor(clSideText, clSideBg, 35);
       end;
+    if AControl is TTreeView then
+      FitTreeIndent(TTreeView(AControl));
     // arbres: rendu de RottenSSHrimp (signes plus/moins, pas le theme Explorer)
     {$IFDEF WINDOWS}
     if not (AControl is TCustomTreeView) then

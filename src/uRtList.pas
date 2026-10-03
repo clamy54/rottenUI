@@ -43,6 +43,10 @@ type
     FSortDesc: Boolean;
     FOrder: array of Integer;     // ligne affichee -> indice de donnee (vide: identite)
     FPlace: array of Integer;     // indice de donnee -> ligne affichee
+    FShowHeader: Boolean;
+    FStretchLast: Boolean;
+    FRowColor: TColor;            // clDefault: couleurs du theme (clAppBg/clAppFg)
+    FRowTextColor: TColor;
     function DataIndex(ADisplay: Integer): Integer;
     function DisplayIndex(AData: Integer): Integer;
     procedure ApplySort;
@@ -52,6 +56,9 @@ type
     function GetItemIndex: Integer;
     procedure SetItemIndex(AValue: Integer);
     procedure ClearRows;
+    procedure SetShowHeader(AValue: Boolean);
+    procedure SetStretchLast(AValue: Boolean);
+    procedure ApplyHeaderHeight;
   protected
     procedure DrawCell(ACol, ARow: Longint; ARect: TRect; AState: TGridDrawState); override;
     procedure SelectionChanged; virtual;
@@ -89,12 +96,20 @@ type
     property Sortable: Boolean read FSortable write FSortable;
     property SortedColumn: Integer read FSortCol;
     property SortedDescending: Boolean read FSortDesc;
+    // False: ligne d'en-tete de hauteur nulle (colonnes fixes, sans titres)
+    property ShowHeader: Boolean read FShowHeader write SetShowHeader;
+    // sans FillWidth: la derniere colonne occupe le reste de la largeur (au
+    // moins sa largeur demandee), la ligne selectionnee va jusqu'au bord
+    property StretchLastColumn: Boolean read FStretchLast write SetStretchLast;
+    // fond et texte des lignes non selectionnees; clDefault suit le theme
+    property RowColor: TColor read FRowColor write FRowColor;
+    property RowTextColor: TColor read FRowTextColor write FRowTextColor;
   end;
 
 implementation
 
 uses
-  Forms, LazUTF8, uTheme, uIcons;
+  Forms, Math, LazUTF8, uTheme, uIcons;
 
 const
   // icone de cellule (taille logique)
@@ -115,6 +130,9 @@ begin
   FRows := TList.Create;
   FLastSelected := -1;
   FSortCol := -1;
+  FShowHeader := True;
+  FRowColor := clDefault;
+  FRowTextColor := clDefault;
   FixedCols := 0;
   ColCount := 1;
   RowCount := 1;
@@ -170,13 +188,33 @@ begin
   FitColumns;
 end;
 
+procedure TRtListGrid.SetStretchLast(AValue: Boolean);
+begin
+  FStretchLast := AValue;
+  FitColumns;
+end;
+
 procedure TRtListGrid.FitColumns;
 var
   i, total, avail, used, w: Integer;
 begin
-  if not FFillWidth or FFitting or (Length(FWeights) = 0) or (Length(FWeights) <> ColCount) then Exit;
+  if not (FFillWidth or FStretchLast) or FFitting or (Length(FWeights) = 0) or
+    (Length(FWeights) <> ColCount) then Exit;
   avail := ClientWidth - 2;
   if avail <= 0 then Exit;
+  if not FFillWidth then
+  begin
+    used := 0;
+    for i := 0 to High(FWeights) - 1 do
+      Inc(used, ColWidths[i]);
+    FFitting := True;
+    try
+      ColWidths[High(FWeights)] := Max(FWeights[High(FWeights)], avail - used);
+    finally
+      FFitting := False;
+    end;
+    Exit;
+  end;
   total := 0;
   for i := 0 to High(FWeights) do
     Inc(total, FWeights[i]);
@@ -211,6 +249,12 @@ var
   i: Integer;
 begin
   inherited HeaderSized(IsColumn, Index);
+  // colonne elargie ou reduite: la derniere reprend le reste
+  if IsColumn and FStretchLast and not FFillWidth then
+  begin
+    FitColumns;
+    Exit;
+  end;
   if not IsColumn or not FFillWidth or (Length(FWeights) <> ColCount) then Exit;
   // les proportions choisies a la souris deviennent la nouvelle repartition
   for i := 0 to High(FWeights) do
@@ -264,7 +308,23 @@ begin
   finally
     bmp.Free;
   end;
+  ApplyHeaderHeight;
   Invalidate;
+end;
+
+procedure TRtListGrid.SetShowHeader(AValue: Boolean);
+begin
+  if FShowHeader = AValue then Exit;
+  FShowHeader := AValue;
+  ApplyHeaderHeight;
+end;
+
+procedure TRtListGrid.ApplyHeaderHeight;
+begin
+  if FShowHeader then
+    RowHeights[0] := DefaultRowHeight
+  else
+    RowHeights[0] := 0;
 end;
 
 procedure TRtListGrid.SetCount(AValue: Integer);
@@ -500,8 +560,10 @@ begin
     end
     else
     begin
-      Canvas.Brush.Color := clAppBg;
-      Canvas.Font.Color := clAppFg;
+      if FRowColor = clDefault then Canvas.Brush.Color := clAppBg
+      else Canvas.Brush.Color := FRowColor;
+      if FRowTextColor = clDefault then Canvas.Font.Color := clAppFg
+      else Canvas.Font.Color := FRowTextColor;
     end;
     if ARow - 1 < FCount then
       s := CellText(DataIndex(ARow - 1), ACol)

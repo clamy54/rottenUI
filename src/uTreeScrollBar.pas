@@ -11,7 +11,7 @@ unit uTreeScrollBar;
 interface
 
 uses
-  Classes, SysUtils, Types, Controls, ComCtrls, ExtCtrls, Graphics;
+  Classes, SysUtils, Types, Controls, ComCtrls, ExtCtrls, Graphics, LMessages;
 
 type
   { Defilement en PIXELS: la meme barre pilote l'arbre ou un terminal. }
@@ -40,6 +40,9 @@ type
     procedure Paint; override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
       MousePos: TPoint): Boolean; override;
+    function DoMouseWheelHorz(Shift: TShiftState; WheelDelta: Integer;
+      MousePos: TPoint): Boolean; override;
+    procedure WMHScroll(var Msg: TLMScroll); message LM_HSCROLL;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer); override;
@@ -171,6 +174,22 @@ begin
   // naturel » que Cocoa a deja applique -- meme parite que le terminal, sinon
   // les deux moities de la fenetre defilent en sens contraire.
   AnimateScrollBy(px);
+end;
+
+// Aucun defilement horizontal: sans barre horizontale (ssNone), rien ne
+// permettrait de revenir au bord gauche, et les signes de la racine seraient
+// tronques. Sous macOS un geste lateral du trackpad arrive par la molette
+// horizontale ou, via l'hote de defilement de Cocoa, par LM_HSCROLL.
+function TScrollTreeView.DoMouseWheelHorz(Shift: TShiftState; WheelDelta: Integer;
+  MousePos: TPoint): Boolean;
+begin
+  Result := True;
+  if ScrolledLeft <> 0 then ScrolledLeft := 0;
+end;
+
+procedure TScrollTreeView.WMHScroll(var Msg: TLMScroll);
+begin
+  if ScrolledLeft <> 0 then ScrolledLeft := 0;
 end;
 
 function TScrollTreeView.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;

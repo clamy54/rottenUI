@@ -3,6 +3,7 @@
 unit uRtCombo;
 
 {$mode objfpc}{$H+}
+{$IFDEF LCLCocoa}{$modeswitch objectivec1}{$ENDIF}
 
 // Liste de choix de la coque, dessinee aux couleurs du theme: la liste
 // deroulante native de Windows impose un cadre et un bouton clairs.
@@ -116,7 +117,29 @@ type
 implementation
 
 uses
-  Math, LCLIntf, uTheme, uUiKit;
+  Math, LCLIntf, uTheme, uUiKit{$IFDEF LCLCocoa}, CocoaAll{$ENDIF};
+
+{$IFDEF LCLCocoa}
+// Cocoa: une session modale (ShowModal) ne transmet les clics qu'a la fenetre
+// modale et a ses fenetres enfants; PopupParent n'en fait pas une enfant tant
+// que le handle n'existe pas. La liste est donc rattachee apres Show, comme
+// le fait la LCL pour son calendrier (cocoawsdatepicker).
+procedure AttachToParentWindow(ADrop, AParent: TCustomForm);
+begin
+  if (AParent = nil) or not AParent.HandleAllocated or not ADrop.HandleAllocated then Exit;
+  NSView(AParent.Handle).window.addChildWindow_ordered(NSView(ADrop.Handle).window,
+    NSWindowAbove);
+end;
+
+procedure DetachFromParentWindow(ADrop: TCustomForm);
+var
+  win: NSWindow;
+begin
+  if not ADrop.HandleAllocated then Exit;
+  win := NSView(ADrop.Handle).window;
+  if Assigned(win.parentWindow) then win.parentWindow.removeChildWindow(win);
+end;
+{$ENDIF}
 
 { TRtDropList }
 
@@ -427,6 +450,9 @@ begin
   if FDone then Exit;
   FDone := True;
   FCombo.DropClosed;
+  {$IFDEF LCLCocoa}
+  DetachFromParentWindow(Self);
+  {$ENDIF}
   Hide;
   // liberee hors de ses propres gestionnaires
   Release;
@@ -597,6 +623,12 @@ begin
   FDrop := TRtDropList.CreateFor(Self);
   FDrop.Place;
   FDrop.Show;
+  {$IFDEF LCLCocoa}
+  AttachToParentWindow(FDrop, GetParentForm(Self));
+  // la selection posee avant la creation du handle est perdue par la
+  // TListBox de Cocoa: reposee une fois la liste affichee
+  FDrop.Refill;
+  {$ENDIF}
   {$IFDEF WINDOWS}
   ApplyNativeDarkMode(FDrop.FList);
   {$ENDIF}

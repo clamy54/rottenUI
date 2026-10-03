@@ -57,6 +57,9 @@ uses
 const
   GAP = 7;
   PAD_Y = 3;
+  // marge gauche de la case: Cocoa trace le contour a cheval sur la
+  // coordonnee, un cadre pose en x = 0 perdait son bord gauche
+  BOX_X = 1;
 
 constructor TRtCheckBox.Create(AOwner: TComponent);
 begin
@@ -83,7 +86,7 @@ var
   flags: Cardinal;
 begin
   Canvas.Font.Assign(Font);
-  Result := Rect(0, 0, AWidth - BoxSize - GAP, 0);
+  Result := Rect(0, 0, AWidth - BOX_X - BoxSize - GAP, 0);
   flags := DT_CALCRECT or DT_NOPREFIX;
   if Align in [alTop, alBottom, alClient] then
     flags := flags or DT_WORDBREAK
@@ -106,7 +109,7 @@ begin
   end;
   if Align in [alTop, alBottom, alClient] then w := Width else w := 10000;
   r := TextRectFor(w);
-  PreferredWidth := BoxSize + GAP + (r.Right - r.Left) + 2;
+  PreferredWidth := BOX_X + BoxSize + GAP + (r.Right - r.Left) + 2;
   PreferredHeight := r.Bottom - r.Top;
   if PreferredHeight < BoxSize then PreferredHeight := BoxSize;
   Inc(PreferredHeight, 2 * PAD_Y);
@@ -131,7 +134,7 @@ begin
   // case alignee sur la premiere ligne du texte
   cy := PAD_Y + (Canvas.TextHeight('Ag') - b) div 2;
   if cy < 0 then cy := 0;
-  box := Rect(0, cy, b, cy + b);
+  box := Rect(BOX_X, cy, BOX_X + b, cy + b);
 
   if Enabled then fg := Font.Color
   else fg := BlendColor(Font.Color, Canvas.Brush.Color, 45);
@@ -162,7 +165,7 @@ begin
     Canvas.Pen.Width := 1;
   end;
 
-  tr := Rect(b + GAP, PAD_Y, r.Right, r.Bottom);
+  tr := Rect(BOX_X + b + GAP, PAD_Y, r.Right, r.Bottom);
   flags := DT_NOPREFIX;
   if Align in [alTop, alBottom, alClient] then
     flags := flags or DT_WORDBREAK
