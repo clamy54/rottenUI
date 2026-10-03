@@ -157,6 +157,7 @@ implementation
 uses
   {$IFDEF WINDOWS}Windows, UxTheme,{$ENDIF}
   {$IFDEF LCLCocoa}CocoaAll, cocoa_extra,{$ENDIF}
+  {$IFDEF LCLGtk3}LazGtk3, LazGdk3, LazGObject2,{$ENDIF}
   uFontEmbed, uRtCombo, uIcons;
 
 const
@@ -382,8 +383,8 @@ const
   // cadre natif d'un TPageControl sans onglets, rogne par l'hote: Windows et
   // GTK en dessinent un; Cocoa non (NSNoTabsNoBorder), ou rogner 4 px
   // cacherait le bord gauche de tout le contenu (signes de l'arbre, premiere
-  // colonne des listes, cases a cocher)
-  PAGE_BORDER_CLIP = {$IFDEF LCLCocoa}0{$ELSE}4{$ENDIF};
+  // colonne des listes, cases a cocher). Celui de GTK3 ne fait qu'un pixel
+  PAGE_BORDER_CLIP = {$IF DEFINED(LCLCocoa)}0{$ELSEIF DEFINED(LCLGtk3)}1{$ELSE}4{$ENDIF};
   // marge d'une zone de texte dans son cadre arrondi
   MEMO_FRAME = 4;
 
@@ -528,8 +529,13 @@ begin
     ATree.Indent := ATree.ExpandSignSize + 6;
 end;
 
+{$IFDEF LCLGtk3}
+var
+  GGtkCss: PGtkCssProvider = nil;
+{$ENDIF}
+
 procedure ApplyNativeAppearance;
-{$IFDEF LCLCocoa}
+{$IF DEFINED(LCLCocoa)}
 var
   name: string;
 begin
@@ -538,6 +544,32 @@ begin
   else name := 'NSAppearanceNameAqua';
   NSApp.setAppearance(NSAppearance.appearanceNamed(
     NSString.stringWithUTF8String(PChar(name))));
+end;
+{$ELSEIF DEFINED(LCLGtk3)}
+// Menus: seuls les elements sont dessines par l'application; la marge haute
+// et basse du menu natif garderait le fond (clair) du theme systeme.
+// Champs: les themes GTK animent le changement de fond; un champ recolore
+// apres sa creation passerait par le fond clair du theme systeme
+var
+  screen: PGdkScreen;
+  rgb: LongInt;
+  css: string;
+begin
+  screen := gdk_screen_get_default;
+  if screen = nil then Exit;
+  if GGtkCss <> nil then
+  begin
+    gtk_style_context_remove_provider_for_screen(screen, PGtkStyleProvider(GGtkCss));
+    g_object_unref(GGtkCss);
+  end;
+  rgb := ColorToRGB(clMenuPopupBg);
+  css := Format('menu { background-color: #%.2x%.2x%.2x; padding: 0; border-radius: 0; } ' +
+    'entry { transition: none; }',
+    [rgb and $FF, (rgb shr 8) and $FF, (rgb shr 16) and $FF]);
+  GGtkCss := gtk_css_provider_new;
+  gtk_css_provider_load_from_data(GGtkCss, PChar(css), -1, nil);
+  gtk_style_context_add_provider_for_screen(screen, PGtkStyleProvider(GGtkCss),
+    GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 end;
 {$ELSE}
 begin
@@ -636,6 +668,11 @@ begin
   AEdit.BorderSpacing.Right := 10;
   AEdit.BorderSpacing.Top := top;
   AEdit.BorderSpacing.Bottom := rowH - eh - top;
+  {$IFDEF LCLGtk3}
+  // GTK3 impose a l'entry la hauteur minimale de son theme, plus haute que
+  // le cadre: seule une contrainte la ramene a la hauteur du texte
+  AEdit.Constraints.MaxHeight := eh;
+  {$ENDIF}
   if GFieldPainter = nil then
     GFieldPainter := TFieldPainter.Create;
   TPanel(p).OnPaint := @GFieldPainter.PanelPaint;
@@ -921,6 +958,12 @@ begin
       AControl.Font.Name := RSUiFontName;
     AControl.Font.Size := RSUiFontSize;
   end;
+  {$IFDEF LCLGtk3}
+  // GTK3 applique Font.Color au bouton natif, dont le fond reste celui du
+  // theme systeme: le texte clair herite du dialogue y serait illisible
+  if AControl is TCustomButton then
+    AControl.Font.Color := clDefault;
+  {$ENDIF}
   if IsShellField(AControl) then
     StyleShellField(TEdit(AControl))
   else if (AControl is TRtComboBox) and (AControl.Parent <> nil) then

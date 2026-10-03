@@ -195,6 +195,7 @@ procedure TRSMenuRenderer.DrawItem(Sender: TObject; ACanvas: TCanvas;
 var
   mi: TMenuItem;
   ty: Integer;
+  {$IFDEF LCLGtk3}cy: Integer;{$ENDIF}
   sc: string;
 begin
   mi := TMenuItem(Sender);
@@ -239,6 +240,19 @@ begin
     ACanvas.TextOut(ARect.Right - ACanvas.TextWidth(sc) - 16, ty, sc);
   end;
   ACanvas.Brush.Style := bsSolid;
+  {$IFDEF LCLGtk3}
+  // sous-menu: GTK3 ne dessine pas sa fleche sur un element dessine par
+  // l'application
+  if mi.Count > 0 then
+  begin
+    if mi.Enabled then ACanvas.Brush.Color := clMenuText
+    else ACanvas.Brush.Color := clMenuDisabled;
+    ACanvas.Pen.Color := ACanvas.Brush.Color;
+    cy := (ARect.Top + ARect.Bottom) div 2;
+    ACanvas.Polygon([Point(ARect.Right - 16, cy - 4), Point(ARect.Right - 12, cy),
+      Point(ARect.Right - 16, cy + 4)]);
+  end;
+  {$ENDIF}
 end;
 
 { TRSMenuBar }
