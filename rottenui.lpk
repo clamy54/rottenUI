@@ -27,7 +27,7 @@
     <Description Value="RottenUI: themed LCL controls (message boxes, combo boxes, check boxes, buttons, lists, tab bar, menu bar, search box, scroll bar, dialogs) with embedded Monaspace and JetBrains Mono fonts, Tabler icons and themes."/>
     <License Value="GPL-3.0-or-later; embedded fonts under SIL OFL 1.1 and Tabler icons under MIT (assets/licenses)."/>
     <Version Major="1"/>
-    <Files Count="20">
+    <Files Count="23">
       <Item1>
         <Filename Value="src/uFontEmbed.pas"/>
         <UnitName Value="uFontEmbed"/>
@@ -105,9 +105,21 @@
         <UnitName Value="uUiKit"/>
       </Item19>
       <Item20>
+        <Filename Value="src/uNoticeBanner.pas"/>
+        <UnitName Value="uNoticeBanner"/>
+      </Item20>
+      <Item21>
+        <Filename Value="src/uThemedControls.pas"/>
+        <UnitName Value="uThemedControls"/>
+      </Item21>
+      <Item22>
+        <Filename Value="src/uThemedSplitter.pas"/>
+        <UnitName Value="uThemedSplitter"/>
+      </Item22>
+      <Item23>
         <Filename Value="src/uIconCatalog.inc"/>
         <Type Value="Include"/>
-      </Item20>
+      </Item23>
     </Files>
     <RequiredPkgs Count="1">
       <Item1>

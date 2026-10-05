@@ -38,6 +38,8 @@ function UserThemesDir: string;
 
 var
   ThemesUserDir: string = '';
+  // False avant InitThemes: sans les themes RottenText
+  ThemesEmbedded: Boolean = True;
 
 implementation
 
@@ -216,7 +218,7 @@ begin
   AddBuiltin('Rotten', RottenBase);
   AddBuiltin('Light', LightBase);
   AddBuiltin('Nord', NordBase);
-  LoadEmbedded;
+  if ThemesEmbedded then LoadEmbedded;
   LoadUserThemes;
   if (APreferredName = '') or not ApplyThemeByName(APreferredName) then
     ApplyThemeIndex(0);
@@ -315,8 +317,22 @@ begin
   clDiffChanged := C(cs, ttDiffChanged);
   clDiffWarning := C(cs, ttDiffWarning);
   clDiffUnknown := C(cs, ttDiffUnknown);
-  clTermBg := clEditorBg;
-  clTermFg := clEditorFg;
+  clTermBg := C(cs, ttTermBg);
+  clTermFg := C(cs, ttTermFg);
+  clPanelBg := C(cs, ttPanelBg);
+  clPanelAltRow := C(cs, ttPanelAltRow);
+  clPanelHeader := C(cs, ttPanelHeader);
+  clPanelHeaderText := C(cs, ttPanelHeaderText);
+  clPanelGrid := C(cs, ttPanelGrid);
+  clTextSecondary := C(cs, ttTextSecondary);
+  clSelActive := C(cs, ttSelActive);
+  clSelInactive := C(cs, ttSelInactive);
+  clSelText := C(cs, ttSelText);
+  clScpOk := C(cs, ttScpOk);
+  clScpWarn := C(cs, ttScpWarn);
+  clScpErr := C(cs, ttScpErr);
+  clProgressBar := C(cs, ttProgressBar);
+  clProgressTrack := C(cs, ttProgressTrack);
   if MonaspaceAvailable then
   begin
     fam := '';
@@ -337,7 +353,10 @@ begin
   // les tailles choisies par l'utilisateur priment sur celles du theme
   if PrefEditorFontSize > 0 then
     RSEditorFontSize := ClampFontSize(PrefEditorFontSize);
-  RSUiFontSize := ClampFontSize(PrefUiFontSize);
+  if PrefUiFontSize = 0 then
+    RSUiFontSize := 0
+  else
+    RSUiFontSize := ClampFontSize(PrefUiFontSize);
   RSTreeFontSize := RSUiFontSize;
   GCurrent := AIndex;
   Result := True;

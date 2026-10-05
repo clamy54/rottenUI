@@ -22,6 +22,7 @@ Chaîne de compilation : FPC 3.2.2 / Lazarus 4.8.
 | `uRtMessage` | boîtes de message et de saisie |
 | `uRtCombo`, `uRtCheck`, `uRtButton`, `uRtList` | liste déroulante, case à cocher, bouton, liste |
 | `uTabBar`, `uMenuBar`, `uSearchBox`, `uTreeScrollBar`, `uPickDialog` | onglets, barre de menus, recherche, défilement, choix |
+| `uThemedControls`, `uThemedSplitter`, `uNoticeBanner` | bouton, case, liste, onglets et séparateur dessinés ; bandeau d'avis |
 | `uSafeSave`, `uJsonGuard` | écriture atomique et lecture bornée de fichiers, garde JSON |
 
 Ressources : `src/rottenui_fonts.res` (lié par `uFontEmbed`), `src/rottenui_icons.res`

@@ -21,6 +21,9 @@ var
   RSTreeFontSize: Integer = 10;
   RSEditorFontName: string = '';
   RSEditorFontSize: Integer = 12;
+  // posees par l'application, jamais par un theme
+  RSTerminalFontName: string = '';
+  RSTerminalFontSize: Integer = 12;
 
   clAppBg, clAppFg, clAccent, clBorder: TColor;
   clSideBg, clSideText, clSideTextHi, clSideSel, clSideHover, clSideActive: TColor;
@@ -39,12 +42,18 @@ var
   clDiffEqual, clDiffAdded, clDiffAbsent, clDiffChanged, clDiffWarning,
     clDiffUnknown: TColor;
 
-  // compatibilite avec les controles repris (barre d'onglets)
   clTermBg, clTermFg: TColor;
+
+  // panneaux de fichiers, transferts
+  clPanelBg, clPanelAltRow, clPanelHeader, clPanelHeaderText, clPanelGrid,
+    clTextSecondary: TColor;
+  clSelActive, clSelInactive, clSelText: TColor;
+  clScpOk, clScpWarn, clScpErr: TColor;
+  clProgressBar, clProgressTrack: TColor;
 
   // tailles choisies par l'utilisateur, prioritaires sur celles du theme
   // (uThemeLoad); l'application les charge et les enregistre
-  PrefUiFontSize: Integer = 10;        // points, interface et arbres
+  PrefUiFontSize: Integer = 10;        // points, interface et arbres; 0 = systeme
   PrefEditorFontSize: Integer = 0;     // 0 = taille du theme
 
 const
@@ -64,6 +73,9 @@ function RgbHexToColor(ARgb: Cardinal): TColor;
 function ColorToRgbHex(AColor: TColor): Cardinal;
 function BlendColor(A, B: TColor; APct: Integer): TColor;
 function IsDarkColor(AColor: TColor): Boolean;
+// mesure hors ecran, police de l'interface
+function UiTextHeight(const ASample: string): Integer;
+function UiTextWidth(const ASample: string): Integer;
 // remet les jetons aux valeurs du theme Rotten compile
 procedure ResetRottenDefaults;
 
@@ -128,6 +140,38 @@ begin
     RSUiFontName := '';
     RSEditorFontName := '';
   end;
+  RSTerminalFontName := RSEditorFontName;
+end;
+
+var
+  GMeasureBmp: TBitmap = nil;
+
+function MeasureCanvas: TCanvas;
+begin
+  if GMeasureBmp = nil then
+  begin
+    GMeasureBmp := TBitmap.Create;
+    GMeasureBmp.SetSize(1, 1);
+  end;
+  if RSUiFontName <> '' then
+    GMeasureBmp.Canvas.Font.Name := RSUiFontName;
+  if RSUiFontSize > 0 then
+    GMeasureBmp.Canvas.Font.Size := RSUiFontSize;
+  Result := GMeasureBmp.Canvas;
+end;
+
+function UiTextHeight(const ASample: string): Integer;
+begin
+  Result := MeasureCanvas.TextHeight(ASample);
+  if Result < 1 then
+    Result := 1;
+end;
+
+function UiTextWidth(const ASample: string): Integer;
+begin
+  Result := MeasureCanvas.TextWidth(ASample);
+  if Result < 0 then
+    Result := 0;
 end;
 
 procedure ApplyUiFont(AControl: TControl);
@@ -198,11 +242,28 @@ begin
   clDiffChanged := RgbHexToColor($FB9E6B);
   clDiffWarning := RgbHexToColor($DCDCAA);
   clDiffUnknown := RgbHexToColor($9D9D9D);
-  clTermBg := clAppBg;
-  clTermFg := clAppFg;
+  clTermBg := RgbHexToColor($1E1E1E);
+  clTermFg := RgbHexToColor($D4D4D4);
+  clPanelBg := RgbHexToColor($1E1E1E);
+  clPanelAltRow := RgbHexToColor($232323);
+  clPanelHeader := RgbHexToColor($2D2D30);
+  clPanelHeaderText := RgbHexToColor($C8C8C8);
+  clPanelGrid := RgbHexToColor($333336);
+  clTextSecondary := RgbHexToColor($9D9D9D);
+  clSelActive := RgbHexToColor($37414F);
+  clSelInactive := RgbHexToColor($2E3238);
+  clSelText := RgbHexToColor($FFFFFF);
+  clScpOk := RgbHexToColor($8FB84E);
+  clScpWarn := RgbHexToColor($D7A03A);
+  clScpErr := RgbHexToColor($F14C4C);
+  clProgressBar := RgbHexToColor($FB9E6B);
+  clProgressTrack := RgbHexToColor($3A3A3D);
 end;
 
 initialization
   ResetRottenDefaults;
+
+finalization
+  GMeasureBmp.Free;
 
 end.

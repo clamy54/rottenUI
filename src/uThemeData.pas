@@ -30,7 +30,11 @@ type
     ttGutterBg, ttGutterFg,
     ttCodeComment, ttCodeString, ttCodeNumber, ttCodeKeyword, ttCodeType,
     ttCodeInvalid, ttCodeFunction, ttCodeVariable,
-    ttDiffEqual, ttDiffAdded, ttDiffAbsent, ttDiffChanged, ttDiffWarning, ttDiffUnknown);
+    ttDiffEqual, ttDiffAdded, ttDiffAbsent, ttDiffChanged, ttDiffWarning, ttDiffUnknown,
+    ttTermBg, ttTermFg,
+    ttPanelBg, ttPanelAltRow, ttPanelHeader, ttPanelHeaderText, ttPanelGrid,
+    ttTextSecondary, ttSelActive, ttSelInactive, ttSelText,
+    ttScpOk, ttScpWarn, ttScpErr, ttProgressBar, ttProgressTrack);
 
   // -1 = jeton absent du fichier: la valeur de base s'applique
   TThemeColors = array[TThemeToken] of LongInt;
@@ -60,7 +64,11 @@ const
     'gutterBg', 'gutterFg',
     'codeComment', 'codeString', 'codeNumber', 'codeKeyword', 'codeType',
     'codeInvalid', 'codeFunction', 'codeVariable',
-    'diffEqual', 'diffAdded', 'diffAbsent', 'diffChanged', 'diffWarning', 'diffUnknown');
+    'diffEqual', 'diffAdded', 'diffAbsent', 'diffChanged', 'diffWarning', 'diffUnknown',
+    'termBg', 'termFg',
+    'panelBg', 'panelAltRow', 'panelHeader', 'panelHeaderText', 'panelGrid',
+    'textSecondary', 'selActive', 'selInactive', 'selText',
+    'scpOk', 'scpWarn', 'scpErr', 'progressBar', 'progressTrack');
 
   FONT_FAMILY_KEYS: array[0..5] of string =
     ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono');
@@ -172,6 +180,15 @@ begin
   SetC(Result, ttDiffEqual, $8FB84E); SetC(Result, ttDiffAdded, $4EC9B0);
   SetC(Result, ttDiffAbsent, $F14C4C); SetC(Result, ttDiffChanged, $FB9E6B);
   SetC(Result, ttDiffWarning, $DCDCAA); SetC(Result, ttDiffUnknown, $9D9D9D);
+  SetC(Result, ttTermBg, $1E1E1E); SetC(Result, ttTermFg, $D4D4D4);
+  SetC(Result, ttPanelBg, $1E1E1E); SetC(Result, ttPanelAltRow, $232323);
+  SetC(Result, ttPanelHeader, $2D2D30); SetC(Result, ttPanelHeaderText, $C8C8C8);
+  SetC(Result, ttPanelGrid, $333336); SetC(Result, ttTextSecondary, $9D9D9D);
+  SetC(Result, ttSelActive, $37414F); SetC(Result, ttSelInactive, $2E3238);
+  SetC(Result, ttSelText, $FFFFFF);
+  SetC(Result, ttScpOk, $8FB84E); SetC(Result, ttScpWarn, $D7A03A);
+  SetC(Result, ttScpErr, $F14C4C);
+  SetC(Result, ttProgressBar, $FB9E6B); SetC(Result, ttProgressTrack, $3A3A3D);
 end;
 
 function LightBase: TThemeColors;
@@ -202,6 +219,15 @@ begin
   SetC(Result, ttDiffEqual, $1F7A1F); SetC(Result, ttDiffAdded, $0B6E7A);
   SetC(Result, ttDiffAbsent, $C62828); SetC(Result, ttDiffChanged, $B35300);
   SetC(Result, ttDiffWarning, $8A6D00); SetC(Result, ttDiffUnknown, $6A6A6A);
+  SetC(Result, ttTermBg, $FBFBFB); SetC(Result, ttTermFg, $2B2B2B);
+  SetC(Result, ttPanelBg, $FFFFFF); SetC(Result, ttPanelAltRow, $F5F5F5);
+  SetC(Result, ttPanelHeader, $E8E8E8); SetC(Result, ttPanelHeaderText, $2B2B2B);
+  SetC(Result, ttPanelGrid, $D8D8D8); SetC(Result, ttTextSecondary, $6A6A6A);
+  SetC(Result, ttSelActive, $CFE3FA); SetC(Result, ttSelInactive, $E2E6EB);
+  SetC(Result, ttSelText, $101010);
+  SetC(Result, ttScpOk, $1F7A1F); SetC(Result, ttScpWarn, $9A6A00);
+  SetC(Result, ttScpErr, $C42B1C);
+  SetC(Result, ttProgressBar, $C05A1E); SetC(Result, ttProgressTrack, $D8D8D8);
 end;
 
 function NordBase: TThemeColors;
@@ -232,6 +258,15 @@ begin
   SetC(Result, ttDiffEqual, $A3BE8C); SetC(Result, ttDiffAdded, $8FBCBB);
   SetC(Result, ttDiffAbsent, $BF616A); SetC(Result, ttDiffChanged, $D08770);
   SetC(Result, ttDiffWarning, $EBCB8B); SetC(Result, ttDiffUnknown, $81879B);
+  SetC(Result, ttTermBg, $2E3440); SetC(Result, ttTermFg, $D8DEE9);
+  SetC(Result, ttPanelBg, $2E3440); SetC(Result, ttPanelAltRow, $333B49);
+  SetC(Result, ttPanelHeader, $3B4252); SetC(Result, ttPanelHeaderText, $E5E9F0);
+  SetC(Result, ttPanelGrid, $434C5E); SetC(Result, ttTextSecondary, $A6B0C0);
+  SetC(Result, ttSelActive, $434C5E); SetC(Result, ttSelInactive, $3A4051);
+  SetC(Result, ttSelText, $ECEFF4);
+  SetC(Result, ttScpOk, $A3BE8C); SetC(Result, ttScpWarn, $EBCB8B);
+  SetC(Result, ttScpErr, $BF616A);
+  SetC(Result, ttProgressBar, $88C0D0); SetC(Result, ttProgressTrack, $3B4252);
 end;
 
 function ResolveColors(const AColors: TThemeColors): TThemeColors;
@@ -251,6 +286,9 @@ begin
       Result[t] := AColors[t]
     else
       Result[t] := base[t];
+  // terminal: l'editeur du theme, pas celui de la base
+  if AColors[ttTermBg] < 0 then Result[ttTermBg] := Result[ttEditorBg];
+  if AColors[ttTermFg] < 0 then Result[ttTermFg] := Result[ttEditorFg];
 end;
 
 procedure AddWarning(var ADef: TThemeDef; const S: string);
