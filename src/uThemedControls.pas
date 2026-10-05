@@ -27,6 +27,7 @@ type
   TThemedButton = class(TCustomControl)
   private
     FDefault: Boolean;
+    FCancel: Boolean;
     FModalResult: TModalResult;
     FGlyph: TThemedButtonGlyph;
     FHot: Boolean;
@@ -55,6 +56,7 @@ type
     // Visuel seulement: Entree n'arrive qu'au focus, la fenetre la route
     // (TNodeDialog.KeyDown).
     property Default: Boolean read FDefault write SetDefault;
+    property Cancel: Boolean read FCancel write FCancel;
     property ModalResult: TModalResult read FModalResult write FModalResult;
     property Glyph: TThemedButtonGlyph read FGlyph write SetGlyph;
   end;
@@ -62,9 +64,13 @@ type
   TThemedCheck = class(TCustomControl)
   private
     FChecked: Boolean;
+    FGrayed: Boolean;
+    FAllowGrayed: Boolean;
     FHot: Boolean;
     FOnChange: TNotifyEvent;
     procedure SetChecked(AValue: Boolean);
+    function GetState: TCheckBoxState;
+    procedure SetState(AValue: TCheckBoxState);
   protected
     procedure Paint; override;
     procedure MouseEnter; override;
@@ -79,6 +85,8 @@ type
     procedure Click; override;
     property Caption;
     property Checked: Boolean read FChecked write SetChecked;
+    property State: TCheckBoxState read GetState write SetState;
+    property AllowGrayed: Boolean read FAllowGrayed write FAllowGrayed;
     // Clic ou Espace seulement: Checked par code ne notifie pas.
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
@@ -152,11 +160,27 @@ type
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
 
+  TThemedGauge = class(TGraphicControl)
+  private
+    FPosition, FMax: Integer;
+    procedure SetPosition(AValue: Integer);
+  protected
+    procedure Paint; override;
+  public
+    constructor Create(AOwner: TComponent); override;
+    property Position: Integer read FPosition write SetPosition;
+    property Max: Integer read FMax write FMax;
+  end;
+
 function ThemeFieldColor: TColor;
 function ContrastTextColor(AColor: TColor): TColor;
 procedure ThemeField(AEdit: TWinControl);
 // Recursif. Les controles peints de cette unite se debrouillent seuls.
 procedure ThemeControls(AControl: TControl);
+// police, couleurs, Echap (bouton Cancel) et Entree (bouton Default)
+procedure ThemeDialog(AForm: TCustomForm);
+// les touches seulement
+procedure DialogKeys(AForm: TCustomForm);
 
 {$IFDEF LCLGtk2}
 // Les themes GTK2 a moteur (Yaru) ignorent modify_base: d'ou un GtkStyle neuf.
@@ -260,6 +284,7 @@ type
   TFieldFramer = class
     procedure PanelPaint(Sender: TObject);
     procedure FieldFocus(Sender: TObject);
+    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
   end;
 
 var
@@ -287,34 +312,37 @@ end;
 
 procedure TFieldFramer.PanelPaint(Sender: TObject);
 var
-  p: TPanel;
+  p: TWinControl;
+  cv: TCanvas;
   i: Integer;
   c: TControl;
   r: TRect;
 begin
-  p := TPanel(Sender);
+  p := TWinControl(Sender);
+  if Sender is TCustomForm then cv := TCustomForm(Sender).Canvas
+  else cv := TPanel(Sender).Canvas;
   for i := 0 to p.ControlCount - 1 do
   begin
     c := p.Controls[i];
     if (c.Tag <> THEME_TAG_FRAMED) or (not c.Visible) then Continue;
     r := FieldFrame(c);
-    p.Canvas.Brush.Style := bsSolid;
-    p.Canvas.Brush.Color := ThemeFieldColor;
+    cv.Brush.Style := bsSolid;
+    cv.Brush.Color := ThemeFieldColor;
     if TWinControl(c).Focused then
     begin
-      p.Canvas.Pen.Color := clAccent;
-      p.Canvas.Pen.Width := 2;
-      p.Canvas.RoundRect(r.Left + 1, r.Top + 1, r.Right, r.Bottom,
+      cv.Pen.Color := clAccent;
+      cv.Pen.Width := 2;
+      cv.RoundRect(r.Left + 1, r.Top + 1, r.Right, r.Bottom,
         RADIUS, RADIUS);
-      p.Canvas.Pen.Width := 1;
+      cv.Pen.Width := 1;
     end
     else
     begin
       if c.Enabled then
-        p.Canvas.Pen.Color := BorderColor
+        cv.Pen.Color := BorderColor
       else
-        p.Canvas.Pen.Color := BlendColor(clAppFg, clAppBg, 16);
-      p.Canvas.RoundRect(r.Left, r.Top, r.Right, r.Bottom, RADIUS, RADIUS);
+        cv.Pen.Color := BlendColor(clAppFg, clAppBg, 16);
+      cv.RoundRect(r.Left, r.Top, r.Right, r.Bottom, RADIUS, RADIUS);
     end;
   end;
 end;
@@ -330,11 +358,9 @@ end;
 procedure FrameField(AEdit: TCustomEdit);
 var
   l, t, w, h, eh: Integer;
-  p: TPanel;
 begin
-  if not (AEdit.Parent is TPanel) then Exit;
+  if not ((AEdit.Parent is TPanel) or (AEdit.Parent is TForm)) then Exit;
   if AEdit.Tag = THEME_TAG_FRAMED then Exit;
-  p := TPanel(AEdit.Parent);
   l := AEdit.Left;
   t := AEdit.Top;
   w := AEdit.Width;
@@ -348,13 +374,20 @@ begin
     // hauteur posee, pas calculee: sans handle, AutoSize ne sait pas encore
     AEdit.AutoSize := False;
     eh := UiTextHeight('Ag') + 2;
+    {$IFDEF LCLGtk3}
+    // GTK3: hauteur minimale du theme
+    AEdit.Constraints.MaxHeight := eh;
+    {$ENDIF}
     AEdit.SetBounds(l + FIELD_PAD_X, t + (h - eh) div 2, w - 2 * FIELD_PAD_X,
       eh);
   end;
   AEdit.Tag := THEME_TAG_FRAMED;
   if GFramer = nil then
     GFramer := TFieldFramer.Create;
-  p.OnPaint := @GFramer.PanelPaint;
+  if AEdit.Parent is TPanel then
+    TPanel(AEdit.Parent).OnPaint := @GFramer.PanelPaint
+  else if not Assigned(TForm(AEdit.Parent).OnPaint) then
+    TForm(AEdit.Parent).OnPaint := @GFramer.PanelPaint;
   if not Assigned(AEdit.OnEnter) then
     AEdit.OnEnter := @GFramer.FieldFocus;
   if not Assigned(AEdit.OnExit) then
@@ -393,10 +426,126 @@ begin
   begin
     ThemeField(TWinControl(AControl));
     FrameField(TCustomEdit(AControl));
+  end
+  else if (AControl is TListBox) and (TListBox(AControl).Style = lbStandard) then
+  begin
+    TListBox(AControl).Color := ThemeFieldColor;
+    AControl.Font.Color := clAppFg;
   end;
   if AControl is TWinControl then
     for i := 0 to TWinControl(AControl).ControlCount - 1 do
       ThemeControls(TWinControl(AControl).Controls[i]);
+end;
+
+function DialogButton(AParent: TWinControl; ACancel: Boolean): TThemedButton;
+var
+  i: Integer;
+  c: TControl;
+begin
+  Result := nil;
+  for i := 0 to AParent.ControlCount - 1 do
+  begin
+    c := AParent.Controls[i];
+    if not c.Visible then Continue;
+    if c is TThemedButton then
+    begin
+      if (ACancel and TThemedButton(c).Cancel) or
+         ((not ACancel) and TThemedButton(c).Default) then
+        Exit(TThemedButton(c));
+    end
+    else if c is TWinControl then
+    begin
+      Result := DialogButton(TWinControl(c), ACancel);
+      if Result <> nil then Exit;
+    end;
+  end;
+end;
+
+procedure TFieldFramer.FormKeyDown(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+var
+  f: TCustomForm;
+  b: TThemedButton;
+begin
+  if (Shift <> []) or not (Sender is TCustomForm) then Exit;
+  f := TCustomForm(Sender);
+  if Key = VK_ESCAPE then
+  begin
+    b := DialogButton(f, True);
+    if b <> nil then
+    begin
+      Key := 0;
+      b.Click;
+    end
+    else if fsModal in f.FormState then
+    begin
+      Key := 0;
+      f.ModalResult := mrCancel;
+    end;
+  end
+  else if (Key = VK_RETURN) and not (f.ActiveControl is TCustomMemo) and
+    not (f.ActiveControl is TThemedButton) then
+  begin
+    b := DialogButton(f, False);
+    if (b <> nil) and b.Enabled then
+    begin
+      Key := 0;
+      b.Click;
+    end;
+  end;
+end;
+
+procedure ThemeDialog(AForm: TCustomForm);
+begin
+  if AForm = nil then Exit;
+  ApplyUiFont(AForm);
+  ThemeControls(AForm);
+  DialogKeys(AForm);
+end;
+
+procedure DialogKeys(AForm: TCustomForm);
+begin
+  if AForm = nil then Exit;
+  if GFramer = nil then
+    GFramer := TFieldFramer.Create;
+  AForm.KeyPreview := True;
+  if (AForm is TForm) and not Assigned(TForm(AForm).OnKeyDown) then
+    TForm(AForm).OnKeyDown := @GFramer.FormKeyDown;
+end;
+
+constructor TThemedGauge.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FMax := 100;
+  Height := 12;
+  Width := 200;
+end;
+
+procedure TThemedGauge.SetPosition(AValue: Integer);
+begin
+  if AValue < 0 then AValue := 0;
+  if AValue > FMax then AValue := FMax;
+  if AValue = FPosition then Exit;
+  FPosition := AValue;
+  Invalidate;
+end;
+
+procedure TThemedGauge.Paint;
+var
+  r: TRect;
+begin
+  r := ClientRect;
+  Canvas.Pen.Style := psClear;
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := clProgressTrack;
+  Canvas.FillRect(r);
+  if (FMax > 0) and (FPosition > 0) then
+  begin
+    r.Right := r.Left + (r.Right - r.Left) * FPosition div FMax;
+    Canvas.Brush.Color := clProgressBar;
+    Canvas.FillRect(r);
+  end;
+  Canvas.Pen.Style := psSolid;
 end;
 
 procedure FocusRing(ACanvas: TCanvas; const R: TRect);
@@ -617,16 +766,37 @@ end;
 
 procedure TThemedCheck.SetChecked(AValue: Boolean);
 begin
-  if FChecked = AValue then Exit;
+  if (FChecked = AValue) and not FGrayed then Exit;
   FChecked := AValue;
+  FGrayed := False;
+  Invalidate;
+end;
+
+function TThemedCheck.GetState: TCheckBoxState;
+begin
+  if FGrayed then Result := cbGrayed
+  else if FChecked then Result := cbChecked
+  else Result := cbUnchecked;
+end;
+
+procedure TThemedCheck.SetState(AValue: TCheckBoxState);
+begin
+  if AValue = GetState then Exit;
+  FGrayed := AValue = cbGrayed;
+  FChecked := AValue = cbChecked;
   Invalidate;
 end;
 
 procedure TThemedCheck.Click;
 begin
   if not Enabled then Exit;
-  FChecked := not FChecked;
-  Invalidate;
+  // comme TCheckBox: decoche, coche, puis grise si AllowGrayed
+  if FGrayed then
+    SetState(cbUnchecked)
+  else if FChecked and FAllowGrayed then
+    SetState(cbGrayed)
+  else
+    SetState(TCheckBoxState(Ord(not FChecked)));
   if Assigned(FOnChange) then
     FOnChange(Self);
   inherited Click;
@@ -663,6 +833,13 @@ begin
   if FChecked and (not Enabled) then
     Canvas.Brush.Color := BlendColor(clAppFg, clAppBg, 25);
   Canvas.RoundRect(b.Left, b.Top, b.Right, b.Bottom, 4, 4);
+  if FGrayed then
+  begin
+    Canvas.Pen.Color := clAppFg;
+    Canvas.Pen.Width := 2;
+    Canvas.Line(b.Left + 4, b.Top + 8, b.Left + 12, b.Top + 8);
+    Canvas.Pen.Width := 1;
+  end;
   if FChecked then
   begin
     Canvas.Pen.Color := ContrastTextColor(Canvas.Brush.Color);
