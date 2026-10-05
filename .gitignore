@@ -1,0 +1,12 @@
+# Sorties de compilation (les .res de src/ sont versionnes)
+lib/
+backup/
+*.compiled
+*.o
+*.ppu
+*.a
+*.lps
+*.bak
+*~
+__pycache__/
+.DS_Store
