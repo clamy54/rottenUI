@@ -546,10 +546,7 @@ begin
     NSString.stringWithUTF8String(PChar(name))));
 end;
 {$ELSEIF DEFINED(LCLGtk3)}
-// Menus: seuls les elements sont dessines par l'application; la marge haute
-// et basse du menu natif garderait le fond (clair) du theme systeme.
-// Champs: les themes GTK animent le changement de fond; un champ recolore
-// apres sa creation passerait par le fond clair du theme systeme
+// fond des menus, pas de transition sur les entry
 var
   screen: PGdkScreen;
   rgb: LongInt;
@@ -669,8 +666,7 @@ begin
   AEdit.BorderSpacing.Top := top;
   AEdit.BorderSpacing.Bottom := rowH - eh - top;
   {$IFDEF LCLGtk3}
-  // GTK3 impose a l'entry la hauteur minimale de son theme, plus haute que
-  // le cadre: seule une contrainte la ramene a la hauteur du texte
+  // GTK3: hauteur minimale du theme
   AEdit.Constraints.MaxHeight := eh;
   {$ENDIF}
   if GFieldPainter = nil then
@@ -959,8 +955,7 @@ begin
     AControl.Font.Size := RSUiFontSize;
   end;
   {$IFDEF LCLGtk3}
-  // GTK3 applique Font.Color au bouton natif, dont le fond reste celui du
-  // theme systeme: le texte clair herite du dialogue y serait illisible
+  // GTK3: le bouton natif garde le fond systeme
   if AControl is TCustomButton then
     AControl.Font.Color := clDefault;
   {$ENDIF}

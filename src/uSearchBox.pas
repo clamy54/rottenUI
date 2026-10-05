@@ -206,8 +206,7 @@ begin
   if FEdit = nil then Exit;
   f := FieldRect;
   {$IFDEF LCLGtk3}
-  // GTK3 impose a l'entry la hauteur minimale de son theme, plus haute que
-  // le pill: une contrainte la garde a l'interieur de la bordure
+  // GTK3: hauteur minimale du theme
   if f.Bottom - f.Top > 2 then
     FEdit.Constraints.MaxHeight := f.Bottom - f.Top - 2;
   {$ENDIF}

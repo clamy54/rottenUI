@@ -241,8 +241,7 @@ begin
   end;
   ACanvas.Brush.Style := bsSolid;
   {$IFDEF LCLGtk3}
-  // sous-menu: GTK3 ne dessine pas sa fleche sur un element dessine par
-  // l'application
+  // GTK3 ne dessine pas la fleche
   if mi.Count > 0 then
   begin
     if mi.Enabled then ACanvas.Brush.Color := clMenuText
