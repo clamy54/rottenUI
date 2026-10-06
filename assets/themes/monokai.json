@@ -1,5 +1,6 @@
 {
   "name": "Monokai",
+  "accent": "#F92672",
   "editorFont": "Neon",
   "tabFont": "Neon",
   "sideFont": "Neon",

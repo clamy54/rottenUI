@@ -1,5 +1,6 @@
 {
   "name": "High Contrast Light",
+  "accent": "#0000CC",
   "editorFont": "Neon",
   "tabFont": "Neon",
   "sideFont": "Neon",

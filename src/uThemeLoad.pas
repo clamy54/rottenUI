@@ -333,6 +333,28 @@ begin
   clScpErr := C(cs, ttScpErr);
   clProgressBar := C(cs, ttProgressBar);
   clProgressTrack := C(cs, ttProgressTrack);
+  clSelectionInactive := C(cs, ttSelectionInactive);
+  clGutterFgCur := C(cs, ttGutterFgCur);
+  clGutterCurBg := C(cs, ttGutterCurBg);
+  clRightEdge := C(cs, ttRightEdge);
+  clTabActiveDim := C(cs, ttTabActiveDim);
+  clTabActiveTextDim := C(cs, ttTabActiveTextDim);
+  clModifiedDot := C(cs, ttModifiedDot);
+  clTabGlyph := C(cs, ttTabGlyph);
+  clMacroRec := C(cs, ttMacroRec);
+  clTabLock := C(cs, ttTabLock);
+  clTabLockMod := C(cs, ttTabLockMod);
+  clMinimapViewport := C(cs, ttMinimapViewport);
+  clFindOutline := C(cs, ttFindOutline);
+  clFindBtn := C(cs, ttFindBtn);
+  clFindBtnText := C(cs, ttFindBtnText);
+  clFindToggleOn := C(cs, ttFindToggleOn);
+  clFindToggleOnText := C(cs, ttFindToggleOnText);
+  clFindToggleOff := C(cs, ttFindToggleOff);
+  clFindToggleOffText := C(cs, ttFindToggleOffText);
+  clSideHeader := C(cs, ttSideHeader);
+  clCodeConstant := C(cs, ttCodeConstant);
+  clCodeOperator := C(cs, ttCodeOperator);
   if MonaspaceAvailable then
   begin
     fam := '';
@@ -343,21 +365,28 @@ begin
     if d.EditorFamily <> '' then fam := ResolveMonaspace(d.EditorFamily);
     if fam = '' then fam := MonaspaceTerminalDefaultFamily;
     RSEditorFontName := fam;
+    // la famille choisie par l'utilisateur prime sur celle du theme
+    if PrefEditorFontKey <> '' then
+    begin
+      fam := ResolveMonaspace(PrefEditorFontKey);
+      if fam <> '' then RSEditorFontName := fam;
+    end;
   end;
   // taille du theme bornee comme celle de l'utilisateur (un theme utilisateur
   // peut en declarer une de 6 a 72)
   if d.EditorSize > 0 then
-    RSEditorFontSize := ClampFontSize(d.EditorSize)
+    RSEditorFontSize := ClampEditorFontSize(d.EditorSize)
   else
     RSEditorFontSize := 12;
   // les tailles choisies par l'utilisateur priment sur celles du theme
   if PrefEditorFontSize > 0 then
-    RSEditorFontSize := ClampFontSize(PrefEditorFontSize);
+    RSEditorFontSize := ClampEditorFontSize(PrefEditorFontSize);
   if PrefUiFontSize = 0 then
     RSUiFontSize := 0
   else
     RSUiFontSize := ClampFontSize(PrefUiFontSize);
   RSTreeFontSize := RSUiFontSize;
+  SyncNativeAppearance;
   GCurrent := AIndex;
   Result := True;
 end;

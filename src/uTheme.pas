@@ -3,6 +3,7 @@
 unit uTheme;
 
 {$mode objfpc}{$H+}
+{$IFDEF LCLCocoa}{$modeswitch objectivec1}{$ENDIF}
 
 // Jetons de couleur et polices en globales, remplacables a chaud par
 // uThemeLoad (reprise de RottenSSHrimp, completee des jetons d'editeur de
@@ -51,10 +52,27 @@ var
   clScpOk, clScpWarn, clScpErr: TColor;
   clProgressBar, clProgressTrack: TColor;
 
+  // editeur de texte (RottenText): absents d'un theme, ils sont deduits de ses
+  // autres couleurs (uThemeData.DeriveEditorTokens)
+  clSelectionInactive, clGutterFgCur, clGutterCurBg, clRightEdge,
+    clMinimapViewport: TColor;
+  clTabActiveDim, clTabActiveTextDim, clModifiedDot, clTabGlyph, clMacroRec,
+    clTabLock, clTabLockMod: TColor;
+  clFindOutline, clFindBtn, clFindBtnText, clFindToggleOn, clFindToggleOnText,
+    clFindToggleOff, clFindToggleOffText: TColor;
+  clSideHeader, clCodeConstant, clCodeOperator: TColor;
+
   // tailles choisies par l'utilisateur, prioritaires sur celles du theme
   // (uThemeLoad); l'application les charge et les enregistre
   PrefUiFontSize: Integer = 10;        // points, interface et arbres; 0 = systeme
   PrefEditorFontSize: Integer = 0;     // 0 = taille du theme
+  // famille de l'editeur choisie par l'utilisateur (cle de uFontEmbed),
+  // prioritaire sur celle du theme; '' = celle du theme
+  PrefEditorFontKey: string = '';
+  // bornes de la taille de l'editeur. Un editeur de texte les elargit avant
+  // InitThemes; les autres gardent celles de l'interface.
+  EditorFontSizeMin: Integer = 10;
+  EditorFontSizeMax: Integer = 14;
 
 const
   // tailles de police (points) lisibles et sures pour les mises en page;
@@ -64,6 +82,8 @@ const
 
 // Taille ramenee dans [FONT_SIZE_MIN, FONT_SIZE_MAX]
 function ClampFontSize(ASize: Integer): Integer;
+// Taille ramenee dans [EditorFontSizeMin, EditorFontSizeMax]
+function ClampEditorFontSize(ASize: Integer): Integer;
 
 procedure ApplyDefaultFonts;
 // recursif sur les enfants; les composants natifs n'y passent pas
@@ -76,18 +96,32 @@ function IsDarkColor(AColor: TColor): Boolean;
 // mesure hors ecran, police de l'interface
 function UiTextHeight(const ASample: string): Integer;
 function UiTextWidth(const ASample: string): Integer;
+// police d'un dialogue (ApplyUiFont): famille de l'interface, taille du
+// systeme. Pour caler une colonne de libelles sur le plus long.
+function DialogTextWidth(const ASample: string): Integer;
 // remet les jetons aux valeurs du theme Rotten compile
 procedure ResetRottenDefaults;
+// Cocoa: l'apparence native (barres de titre, menus, selection des champs)
+// suit clAppBg et non le bureau. Sans effet ailleurs.
+procedure SyncNativeAppearance;
 
 implementation
 
 uses
+  {$IFDEF LCLCocoa}CocoaAll, cocoa_extra,{$ENDIF}
   uFontEmbed;
 
 function ClampFontSize(ASize: Integer): Integer;
 begin
   if ASize < FONT_SIZE_MIN then Result := FONT_SIZE_MIN
   else if ASize > FONT_SIZE_MAX then Result := FONT_SIZE_MAX
+  else Result := ASize;
+end;
+
+function ClampEditorFontSize(ASize: Integer): Integer;
+begin
+  if ASize < EditorFontSizeMin then Result := EditorFontSizeMin
+  else if ASize > EditorFontSizeMax then Result := EditorFontSizeMax
   else Result := ASize;
 end;
 
@@ -174,6 +208,25 @@ begin
     Result := 0;
 end;
 
+var
+  GDialogBmp: TBitmap = nil;
+
+function DialogTextWidth(const ASample: string): Integer;
+begin
+  if GDialogBmp = nil then
+  begin
+    GDialogBmp := TBitmap.Create;
+    GDialogBmp.SetSize(1, 1);
+  end;
+  if RSUiFontName <> '' then
+    GDialogBmp.Canvas.Font.Name := RSUiFontName
+  else
+    GDialogBmp.Canvas.Font.Name := 'default';
+  Result := GDialogBmp.Canvas.TextWidth(ASample);
+  if Result < 0 then
+    Result := 0;
+end;
+
 procedure ApplyUiFont(AControl: TControl);
 var
   i: Integer;
@@ -189,6 +242,21 @@ begin
       ApplyUiFont(wc.Controls[i]);
   end;
 end;
+
+procedure SyncNativeAppearance;
+{$IFDEF LCLCocoa}
+var
+  name: NSString;
+begin
+  if NSApp = nil then Exit;
+  if IsDarkColor(clAppBg) then name := NSSTR('NSAppearanceNameDarkAqua')
+  else name := NSSTR('NSAppearanceNameAqua');
+  NSApp.setAppearance(NSAppearance.appearanceNamed(name));
+end;
+{$ELSE}
+begin
+end;
+{$ENDIF}
 
 procedure ResetRottenDefaults;
 begin
@@ -258,6 +326,28 @@ begin
   clScpErr := RgbHexToColor($F14C4C);
   clProgressBar := RgbHexToColor($FB9E6B);
   clProgressTrack := RgbHexToColor($3A3A3D);
+  clSelectionInactive := RgbHexToColor($2C3B4C);
+  clGutterFgCur := RgbHexToColor($C6C6C6);
+  clGutterCurBg := RgbHexToColor($282828);
+  clRightEdge := RgbHexToColor($2A2A2A);
+  clTabActiveDim := RgbHexToColor($58585C);
+  clTabActiveTextDim := RgbHexToColor($F1F1F1);
+  clModifiedDot := RgbHexToColor($6A9955);
+  clTabGlyph := RgbHexToColor($D4D4D4);
+  clMacroRec := RgbHexToColor($F44747);
+  clTabLock := RgbHexToColor($F44747);
+  clTabLockMod := RgbHexToColor($CCA700);
+  clMinimapViewport := RgbHexToColor($3A3A3A);
+  clFindOutline := RgbHexToColor($FAC761);
+  clFindBtn := RgbHexToColor($37373D);
+  clFindBtnText := RgbHexToColor($D4D4D4);
+  clFindToggleOn := RgbHexToColor($FB9E6B);
+  clFindToggleOnText := RgbHexToColor($1E1E1E);
+  clFindToggleOff := RgbHexToColor($37373D);
+  clFindToggleOffText := RgbHexToColor($9D9D9D);
+  clSideHeader := RgbHexToColor($7A7A7A);
+  clCodeConstant := RgbHexToColor($4FC1FF);
+  clCodeOperator := RgbHexToColor($D4D4D4);
 end;
 
 initialization
@@ -265,5 +355,6 @@ initialization
 
 finalization
   GMeasureBmp.Free;
+  GDialogBmp.Free;
 
 end.

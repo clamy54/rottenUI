@@ -12,6 +12,9 @@ unit uJsonGuard;
 
 interface
 
+uses
+  SysUtils, fpjson;
+
 const
   // Profondeur d'imbrication acceptee par defaut: largement au-dela de tout
   // fichier legitime, tres en deca de ce qui fait tomber le parseur.
@@ -21,7 +24,33 @@ const
 function JsonNestingTooDeep(const AText: string;
   AMax: Integer = JSON_MAX_DEPTH_DEFAULT): Boolean;
 
+type
+  EJsonGuard = class(Exception);
+
+// Analyse bornee et stricte: profondeur controlee AVANT le parseur, et rien
+// ne doit trainer apres le document. Leve comme GetJSON (EJsonGuard si trop
+// profond); l'appelant libere le resultat.
+function SafeGetJSON(const AText: string;
+  AMaxDepth: Integer = JSON_MAX_DEPTH_DEFAULT): TJSONData;
+
 implementation
+
+uses
+  jsonparser, jsonscanner;
+
+function SafeGetJSON(const AText: string; AMaxDepth: Integer): TJSONData;
+var
+  p: TJSONParser;
+begin
+  if JsonNestingTooDeep(AText, AMaxDepth) then
+    raise EJsonGuard.Create('JSON nesting too deep');
+  p := TJSONParser.Create(AText, [joUTF8, joStrict]);
+  try
+    Result := p.Parse;
+  finally
+    p.Free;
+  end;
+end;
 
 function JsonNestingTooDeep(const AText: string; AMax: Integer): Boolean;
 var

@@ -34,7 +34,13 @@ type
     ttTermBg, ttTermFg,
     ttPanelBg, ttPanelAltRow, ttPanelHeader, ttPanelHeaderText, ttPanelGrid,
     ttTextSecondary, ttSelActive, ttSelInactive, ttSelText,
-    ttScpOk, ttScpWarn, ttScpErr, ttProgressBar, ttProgressTrack);
+    ttScpOk, ttScpWarn, ttScpErr, ttProgressBar, ttProgressTrack,
+    // editeur de texte: absents d'un theme, deduits de ses autres couleurs
+    ttSelectionInactive, ttGutterFgCur, ttGutterCurBg, ttRightEdge, ttTabActiveDim,
+    ttTabActiveTextDim, ttModifiedDot, ttTabGlyph, ttMacroRec, ttTabLock, ttTabLockMod,
+    ttMinimapViewport, ttFindOutline, ttFindBtn, ttFindBtnText, ttFindToggleOn,
+    ttFindToggleOnText, ttFindToggleOff, ttFindToggleOffText, ttSideHeader,
+    ttCodeConstant, ttCodeOperator);
 
   // -1 = jeton absent du fichier: la valeur de base s'applique
   TThemeColors = array[TThemeToken] of LongInt;
@@ -68,7 +74,12 @@ const
     'termBg', 'termFg',
     'panelBg', 'panelAltRow', 'panelHeader', 'panelHeaderText', 'panelGrid',
     'textSecondary', 'selActive', 'selInactive', 'selText',
-    'scpOk', 'scpWarn', 'scpErr', 'progressBar', 'progressTrack');
+    'scpOk', 'scpWarn', 'scpErr', 'progressBar', 'progressTrack',
+    'selectionInactive', 'gutterFgCur', 'gutterCurBg', 'rightEdge', 'tabActiveDim',
+    'tabActiveTextDim', 'modifiedDot', 'tabGlyph', 'macroRec', 'tabLock', 'tabLockMod',
+    'minimapViewport', 'findOutline', 'findBtn', 'findBtnText', 'findToggleOn',
+    'findToggleOnText', 'findToggleOff', 'findToggleOffText', 'sideHeader',
+    'codeConstant', 'codeOperator');
 
   FONT_FAMILY_KEYS: array[0..5] of string =
     ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono');
@@ -189,6 +200,18 @@ begin
   SetC(Result, ttScpOk, $8FB84E); SetC(Result, ttScpWarn, $D7A03A);
   SetC(Result, ttScpErr, $F14C4C);
   SetC(Result, ttProgressBar, $FB9E6B); SetC(Result, ttProgressTrack, $3A3A3D);
+  // onglet actif du volet sans focus: deduit, la palette d'onglets est celle
+  // de la coque
+  SetC(Result, ttSelectionInactive, $2C3B4C); SetC(Result, ttGutterFgCur, $C6C6C6);
+  SetC(Result, ttGutterCurBg, $282828); SetC(Result, ttRightEdge, $2A2A2A);
+  SetC(Result, ttModifiedDot, $6A9955); SetC(Result, ttTabGlyph, $D4D4D4);
+  SetC(Result, ttMacroRec, $F44747); SetC(Result, ttTabLock, $F44747);
+  SetC(Result, ttTabLockMod, $CCA700); SetC(Result, ttMinimapViewport, $3A3A3A);
+  SetC(Result, ttFindOutline, $FAC761); SetC(Result, ttFindBtn, $37373D);
+  SetC(Result, ttFindBtnText, $D4D4D4); SetC(Result, ttFindToggleOn, $FB9E6B);
+  SetC(Result, ttFindToggleOnText, $1E1E1E); SetC(Result, ttFindToggleOff, $37373D);
+  SetC(Result, ttFindToggleOffText, $9D9D9D); SetC(Result, ttSideHeader, $7A7A7A);
+  SetC(Result, ttCodeConstant, $4FC1FF); SetC(Result, ttCodeOperator, $D4D4D4);
 end;
 
 function LightBase: TThemeColors;
@@ -267,6 +290,59 @@ begin
   SetC(Result, ttScpOk, $A3BE8C); SetC(Result, ttScpWarn, $EBCB8B);
   SetC(Result, ttScpErr, $BF616A);
   SetC(Result, ttProgressBar, $88C0D0); SetC(Result, ttProgressTrack, $3B4252);
+  SetC(Result, ttSelectionInactive, $3B4252); SetC(Result, ttGutterFgCur, $D8DEE9);
+  SetC(Result, ttGutterCurBg, $3B4252); SetC(Result, ttRightEdge, $434C5E);
+  SetC(Result, ttModifiedDot, $A3BE8C); SetC(Result, ttTabGlyph, $D8DEE9);
+  SetC(Result, ttMacroRec, $BF616A); SetC(Result, ttTabLock, $BF616A);
+  SetC(Result, ttTabLockMod, $EBCB8B); SetC(Result, ttMinimapViewport, $434C5E);
+  SetC(Result, ttFindOutline, $88C0D0); SetC(Result, ttFindBtn, $3B4252);
+  SetC(Result, ttFindBtnText, $D8DEE9); SetC(Result, ttFindToggleOn, $434C5E);
+  SetC(Result, ttFindToggleOnText, $88C0D0); SetC(Result, ttFindToggleOff, $3B4252);
+  SetC(Result, ttFindToggleOffText, $616E88); SetC(Result, ttSideHeader, $616B85);
+  SetC(Result, ttCodeConstant, $B48EAD); SetC(Result, ttCodeOperator, $81A1C1);
+end;
+
+// APct % de A, le reste de B
+function MixRgb(A, B: LongInt; APct: Integer): LongInt;
+begin
+  Result :=
+    ((((A shr 16) and $FF) * APct + ((B shr 16) and $FF) * (100 - APct)) div 100) shl 16 or
+    ((((A shr 8) and $FF) * APct + ((B shr 8) and $FF) * (100 - APct)) div 100) shl 8 or
+    (((A and $FF) * APct + (B and $FF) * (100 - APct)) div 100);
+end;
+
+// Jetons d'editeur absents du theme: tires de SES couleurs, pas de la base
+// (une constante bleue de Rotten jurerait dans un theme vert phosphore).
+procedure DeriveEditorTokens(var C: TThemeColors);
+
+  procedure D(T: TThemeToken; AValue: LongInt);
+  begin
+    if C[T] < 0 then C[T] := AValue;
+  end;
+
+begin
+  D(ttSelectionInactive, MixRgb(C[ttSelectionBg], C[ttEditorBg], 35));
+  D(ttGutterFgCur, MixRgb(C[ttEditorFg], C[ttGutterBg], 85));
+  D(ttGutterCurBg, C[ttCurrentLine]);
+  D(ttRightEdge, MixRgb(C[ttEditorFg], C[ttEditorBg], 6));
+  D(ttTabActiveDim, MixRgb(C[ttTabActive], C[ttTabInactive], 50));
+  D(ttTabActiveTextDim, MixRgb(C[ttTabActiveText], C[ttTabInactiveText], 70));
+  D(ttModifiedDot, C[ttTabIcon]);
+  D(ttTabGlyph, C[ttTabInactiveText]);
+  D(ttMacroRec, C[ttCodeInvalid]);
+  D(ttTabLock, C[ttCodeInvalid]);
+  D(ttTabLockMod, C[ttScpWarn]);
+  D(ttMinimapViewport, MixRgb(C[ttEditorFg], C[ttEditorBg], 14));
+  D(ttFindOutline, C[ttAccent]);
+  D(ttFindBtn, C[ttSideSel]);
+  D(ttFindBtnText, C[ttEditorFg]);
+  D(ttFindToggleOn, C[ttSelectionBg]);
+  D(ttFindToggleOnText, C[ttSelectionFg]);
+  D(ttFindToggleOff, C[ttFindBtn]);
+  D(ttFindToggleOffText, C[ttStatusText]);
+  D(ttSideHeader, MixRgb(C[ttSideText], C[ttSideBg], 50));
+  D(ttCodeConstant, C[ttCodeNumber]);
+  D(ttCodeOperator, C[ttEditorFg]);
 end;
 
 function ResolveColors(const AColors: TThemeColors): TThemeColors;
@@ -284,11 +360,14 @@ begin
   for t := Low(t) to High(t) do
     if AColors[t] >= 0 then
       Result[t] := AColors[t]
+    else if t >= ttSelectionInactive then
+      Result[t] := -1
     else
       Result[t] := base[t];
   // terminal: l'editeur du theme, pas celui de la base
   if AColors[ttTermBg] < 0 then Result[ttTermBg] := Result[ttEditorBg];
   if AColors[ttTermFg] < 0 then Result[ttTermFg] := Result[ttEditorFg];
+  DeriveEditorTokens(Result);
 end;
 
 procedure AddWarning(var ADef: TThemeDef; const S: string);
@@ -337,7 +416,11 @@ begin
     Exit;
   end;
   try
-    data := GetJSON(AText);
+    // GetJSON refuse la marque d'ordre d'octets que posent certains editeurs
+    if Copy(AText, 1, 3) = #$EF#$BB#$BF then
+      data := GetJSON(Copy(AText, 4, MaxInt))
+    else
+      data := GetJSON(AText);
   except
     AError := 'invalid JSON';
     Exit;

@@ -32,6 +32,8 @@ type
     FWheelTimer: TTimer;
     FWheelTarget: Integer;
     FWheelActive: Boolean;
+    FAutoLineColor: TColor;
+    procedure SyncLineColor;
     function GetScrollTop: Integer;
     procedure SetScrollTop(AValue: Integer);
     procedure WheelStop;
@@ -47,6 +49,7 @@ type
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer); override;
   public
+    constructor Create(AOwner: TComponent); override;
     function MaxScrollTop: Integer;
     function ViewportHeight: Integer;
     procedure AnimateScrollBy(ADelta: Integer);
@@ -95,6 +98,9 @@ type
   end;
 
 implementation
+
+uses
+  uTheme;
 
 const
   THUMB_INSET = 2;
@@ -267,8 +273,29 @@ begin
   Result := GetNodeDrawAreaHeight;
 end;
 
+constructor TScrollTreeView.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FAutoLineColor := TreeLineColor;
+end;
+
+// Traits de liaison: la LCL les veut en clWindowFrame, noir sous Cocoa quel
+// que soit le theme. Deduits du texte et du fond de l'arbre, tant que
+// l'application n'a pas pose sa propre couleur.
+procedure TScrollTreeView.SyncLineColor;
+var
+  fg: TColor;
+begin
+  if TreeLineColor <> FAutoLineColor then Exit;
+  fg := Font.Color;
+  if fg = clDefault then fg := clWindowText;
+  FAutoLineColor := BlendColor(fg, BackgroundColor, 35);
+  TreeLineColor := FAutoLineColor;
+end;
+
 procedure TScrollTreeView.Paint;
 begin
+  SyncLineColor;
   inherited Paint;
   if Assigned(FOnViewChanged) then
     FOnViewChanged(Self);

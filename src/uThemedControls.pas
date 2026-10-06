@@ -9,6 +9,7 @@
 unit uThemedControls;
 
 {$mode objfpc}{$H+}
+{$IFDEF LCLCocoa}{$modeswitch objectivec1}{$ENDIF}
 
 interface
 
@@ -192,7 +193,8 @@ implementation
 
 uses
   uMenuBar
-  {$IFDEF LCLGtk2}, gtk2, gdk2, glib2{$ENDIF};
+  {$IFDEF LCLGtk2}, gtk2, gdk2, glib2{$ENDIF}
+  {$IFDEF LCLCocoa}, CocoaAll, CocoaConfig{$ENDIF};
 
 const
   RADIUS = 6;
@@ -353,6 +355,39 @@ begin
     TControl(Sender).Parent.Invalidate;
 end;
 
+{$IFDEF LCLCocoa}
+type
+  // Cocoa: une fenetre qui gagne ou perd le clavier ne change pas de premier
+  // repondeur, donc ni OnEnter ni OnExit: le cadre restait a l'etat d'avant.
+  TKeyWindowWatch = objcclass(NSObject)
+    procedure keyChanged(ANote: NSNotification); message 'keyChanged:';
+  end;
+
+procedure TKeyWindowWatch.keyChanged(ANote: NSNotification);
+var
+  i: Integer;
+  c: TWinControl;
+begin
+  for i := 0 to Screen.CustomFormCount - 1 do
+  begin
+    c := Screen.CustomForms[i].ActiveControl;
+    if (c <> nil) and (c.Tag = THEME_TAG_FRAMED) and (c.Parent <> nil) then
+      c.Parent.Invalidate;
+  end;
+end;
+
+procedure WatchKeyWindow;
+var
+  w: TKeyWindowWatch;
+begin
+  w := TKeyWindowWatch.alloc.init;
+  NSNotificationCenter.defaultCenter.addObserver_selector_name_object(w,
+    ObjCSelector('keyChanged:'), NSWindowDidBecomeKeyNotification, nil);
+  NSNotificationCenter.defaultCenter.addObserver_selector_name_object(w,
+    ObjCSelector('keyChanged:'), NSWindowDidResignKeyNotification, nil);
+end;
+{$ENDIF}
+
 // Cadre natif blanc et epais sous Windows en sombre: retire, champ rentre dans
 // ses bornes, le panneau peint un cadre arrondi a la place.
 procedure FrameField(AEdit: TCustomEdit);
@@ -383,7 +418,12 @@ begin
   end;
   AEdit.Tag := THEME_TAG_FRAMED;
   if GFramer = nil then
+  begin
     GFramer := TFieldFramer.Create;
+    {$IFDEF LCLCocoa}
+    WatchKeyWindow;
+    {$ENDIF}
+  end;
   if AEdit.Parent is TPanel then
     TPanel(AEdit.Parent).OnPaint := @GFramer.PanelPaint
   else if not Assigned(TForm(AEdit.Parent).OnPaint) then
@@ -1298,5 +1338,14 @@ begin
   FMouseFocus := False;
   Invalidate;
 end;
+
+{$IFDEF LCLCocoa}
+initialization
+  // Cocoa: la LCL retire l'anneau de focus natif des champs ordinaires, pas
+  // de ceux a mot de passe: il doublait le cadre peint par le panneau.
+  // Par classe: basculer PasswordChar recree la vue.
+  CocoaConfigFocusRing.setStrategy(TCocoaConfigFocusRing.Strategy.none,
+    NSSTR('TCocoaSecureTextField'));
+{$ENDIF}
 
 end.

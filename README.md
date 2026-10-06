@@ -8,7 +8,8 @@ Licence : GPL-3.0-or-later (`LICENSE`). Fontes Monaspace et JetBrains Mono : SIL
 icônes Tabler : MIT. Leurs notices sont dans `assets/licenses/` et embarquées avec elles
 (ressources `LICENSE_MONASPACE_OFL_1_1`, `LICENSE_JETBRAINSMONO_OFL_1_1`, `LICENSE_TABLER_MIT`).
 
-Chaîne de compilation : FPC 3.2.2 / Lazarus 4.8.
+Chaîne de compilation : FPC 3.2.2 / Lazarus 4.8. Sous Linux, le widgetset GTK3 demande
+Lazarus trunk (5 ou plus) ; GTK2 reste possible avec la 4.8.
 
 ## Contenu
 
@@ -22,6 +23,7 @@ Chaîne de compilation : FPC 3.2.2 / Lazarus 4.8.
 | `uRtMessage` | boîtes de message et de saisie |
 | `uRtCombo`, `uRtCheck`, `uRtButton`, `uRtList` | liste déroulante, case à cocher, bouton, liste |
 | `uTabBar`, `uMenuBar`, `uSearchBox`, `uTreeScrollBar`, `uPickDialog` | onglets, barre de menus, recherche, défilement, choix |
+| `uDocTabBar` | onglets de documents pour un éditeur, pilotés par événements : témoins modifié, lecture seule et enregistrement, réordonnancement, bouton « + » |
 | `uThemedControls`, `uThemedSplitter`, `uNoticeBanner` | bouton, case, liste, onglets et séparateur dessinés ; bandeau d'avis |
 | `uSafeSave`, `uJsonGuard` | écriture atomique et lecture bornée de fichiers, garde JSON |
 
@@ -52,6 +54,11 @@ ApplyDefaultFonts;                   // uTheme
 // (défaut: <dossier de configuration>/themes)
 PrefUiFontSize := 10;
 ThemesUserDir := MonDossier + PathDelim + 'themes';
+// facultatif, pour un éditeur de texte: plage de taille de l'éditeur plus large
+// que celle de l'interface (10 à 14 par défaut), famille choisie par l'utilisateur
+EditorFontSizeMin := 6;
+EditorFontSizeMax := 72;
+PrefEditorFontKey := 'Krypton';
 InitThemes('Rotten');                // uThemeLoad
 ```
 

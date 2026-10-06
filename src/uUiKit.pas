@@ -3,7 +3,6 @@
 unit uUiKit;
 
 {$mode objfpc}{$H+}
-{$IFDEF LCLCocoa}{$modeswitch objectivec1}{$ENDIF}
 
 // Construction par code des controles (pas de .lfm, comme dans RottenSSHrimp)
 // et dialogue de base. Comme dans RottenSSHrimp, la coque et ses onglets sont
@@ -156,7 +155,6 @@ implementation
 
 uses
   {$IFDEF WINDOWS}Windows, UxTheme,{$ENDIF}
-  {$IFDEF LCLCocoa}CocoaAll, cocoa_extra,{$ENDIF}
   {$IFDEF LCLGtk3}LazGtk3, LazGdk3, LazGObject2,{$ENDIF}
   uFontEmbed, uRtCombo, uIcons;
 
@@ -536,14 +534,8 @@ var
 
 procedure ApplyNativeAppearance;
 {$IF DEFINED(LCLCocoa)}
-var
-  name: string;
 begin
-  if NSApp = nil then Exit;
-  if IsDarkColor(clAppBg) then name := 'NSAppearanceNameDarkAqua'
-  else name := 'NSAppearanceNameAqua';
-  NSApp.setAppearance(NSAppearance.appearanceNamed(
-    NSString.stringWithUTF8String(PChar(name))));
+  SyncNativeAppearance;
 end;
 {$ELSEIF DEFINED(LCLGtk3)}
 // fond des menus, pas de transition sur les entry

@@ -1,5 +1,6 @@
 {
   "name": "Paper",
+  "accent": "#55606E",
   "editorFont": "Radon",
   "editorFontSize": 12,
   "tabFont": "Neon",

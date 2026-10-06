@@ -42,6 +42,8 @@ type
     procedure AdoptMainMenu(AMenu: TMainMenu);
     function MenuCount: Integer;
     function MenuRoot(AIndex: Integer): TMenuItem;
+    // libelle de la barre, sans le '&'
+    function MenuTitle(AIndex: Integer): string;
     // les popups ne sont pas rattaches au Menu du formulaire: la LCL ne les
     // interroge jamais. A appeler depuis IsShortcut du form, sinon zero
     // raccourci ne marche.
@@ -302,6 +304,11 @@ end;
 function TRSMenuBar.MenuRoot(AIndex: Integer): TMenuItem;
 begin
   Result := FMenus[AIndex].Items;
+end;
+
+function TRSMenuBar.MenuTitle(AIndex: Integer): string;
+begin
+  Result := FTitles[AIndex];
 end;
 
 function TRSMenuBar.DispatchShortcut(var AMessage: TLMKey): Boolean;

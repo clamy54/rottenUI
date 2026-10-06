@@ -1,5 +1,6 @@
 {
   "name": "Classic Light",
+  "accent": "#0000FF",
   "editorFont": "Neon",
   "tabFont": "Neon",
   "sideFont": "Neon",

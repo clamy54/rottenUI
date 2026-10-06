@@ -11,7 +11,7 @@ uses
   uFontEmbed, uIcons, uJsonGuard, uMenuBar, uPickDialog, uRtButton, uRtCheck, 
   uRtCombo, uRtList, uRtMessage, uSafeSave, uSearchBox, uTabBar, uTheme, 
   uThemeData, uThemeLoad, uThemePreview, uTreeScrollBar, uUiKit, uNoticeBanner, 
-  uThemedControls, uThemedSplitter;
+  uThemedControls, uThemedSplitter, uDocTabBar;
 
 implementation
 

@@ -1,5 +1,6 @@
 {
   "name": "Gruvbox Dark",
+  "accent": "#FE8019",
   "editorFont": "Xenon",
   "tabFont": "Xenon",
   "sideFont": "Xenon",

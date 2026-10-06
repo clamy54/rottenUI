@@ -28,6 +28,8 @@ var
 function RtQuestionDlg(const ACaption, AMsg: string; ADlgType: TMsgDlgType;
   const AButtons: array of const; AHelpCtx: Longint = 0): TModalResult;
 function RtInputQuery(const ACaption, APrompt: string; var AValue: string): Boolean;
+// comme InputBox: rend ADefault a l'annulation
+function RtInputBox(const ACaption, APrompt, ADefault: string): string;
 
 implementation
 
@@ -351,6 +353,13 @@ begin
   finally
     f.Free;
   end;
+end;
+
+function RtInputBox(const ACaption, APrompt, ADefault: string): string;
+begin
+  Result := ADefault;
+  if not RtInputQuery(ACaption, APrompt, Result) then
+    Result := ADefault;
 end;
 
 end.
