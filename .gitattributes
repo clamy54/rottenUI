@@ -1,0 +1,7 @@
+# Les .res sont fabriques a partir de ces fichiers: une fin de ligne convertie
+# au checkout et le controle de gen_res.py crie au perime.
+* text=auto eol=lf
+
+*.png binary
+*.ttf binary
+*.res binary
