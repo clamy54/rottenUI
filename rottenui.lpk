@@ -27,7 +27,7 @@
     <Description Value="RottenUI: themed LCL controls (message boxes, combo boxes, check boxes, buttons, lists, tab bar, menu bar, search box, scroll bar, dialogs) with embedded Monaspace and JetBrains Mono fonts, Tabler icons and themes."/>
     <License Value="GPL-3.0-or-later; embedded fonts under SIL OFL 1.1 and Tabler icons under MIT (assets/licenses)."/>
     <Version Major="1"/>
-    <Files Count="32">
+    <Files Count="33">
       <Item1>
         <Filename Value="src/uFontEmbed.pas"/>
         <UnitName Value="uFontEmbed"/>
@@ -156,6 +156,10 @@
         <Filename Value="src/uRtPassword.pas"/>
         <UnitName Value="uRtPassword"/>
       </Item32>
+      <Item33>
+        <Filename Value="src/uGtk3Style.pas"/>
+        <UnitName Value="uGtk3Style"/>
+      </Item33>
     </Files>
     <RequiredPkgs Count="1">
       <Item1>

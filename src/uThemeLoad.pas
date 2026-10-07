@@ -35,7 +35,7 @@ var
 implementation
 
 uses
-  LCLType, uTheme, uFontEmbed, uSafeSave;
+  LCLType, uTheme, uFontEmbed, uSafeSave, uGtk3Style;
 
 {$R rottenui_themes.res}
 
@@ -377,6 +377,7 @@ begin
   RSTreeFontSize := RSUiFontSize;
   SyncNativeAppearance;
   GCurrent := AIndex;
+  ApplyGtk3Style;
   Result := True;
 end;
 

@@ -137,8 +137,7 @@ implementation
 
 uses
   {$IFDEF WINDOWS}Windows, UxTheme,{$ENDIF}
-  {$IFDEF LCLGtk3}LazGtk3, LazGdk3, LazGObject2,{$ENDIF}
-  uFontEmbed, uIcons;
+  uFontEmbed, uIcons, uGtk3Style;
 
 const
   DIALOG_ICON = 20;
@@ -497,40 +496,14 @@ begin
     ATree.Indent := ATree.ExpandSignSize + 6;
 end;
 
-{$IFDEF LCLGtk3}
-var
-  GGtkCss: PGtkCssProvider = nil;
-{$ENDIF}
-
 procedure ApplyNativeAppearance;
 {$IF DEFINED(LCLCocoa)}
 begin
   SyncNativeAppearance;
 end;
 {$ELSEIF DEFINED(LCLGtk3)}
-// GTK3. Menus: seuls les items sont dessines par l'application, les marges du menu natif
-// gardaient le fond clair du theme systeme. Champs: le theme anime le changement de
-// fond, et un champ recolore apres creation flashait le fond clair du systeme.
-var
-  screen: PGdkScreen;
-  rgb: LongInt;
-  css: string;
 begin
-  screen := gdk_screen_get_default;
-  if screen = nil then Exit;
-  if GGtkCss <> nil then
-  begin
-    gtk_style_context_remove_provider_for_screen(screen, PGtkStyleProvider(GGtkCss));
-    g_object_unref(GGtkCss);
-  end;
-  rgb := ColorToRGB(clMenuPopupBg);
-  css := Format('menu { background-color: #%.2x%.2x%.2x; padding: 0; border-radius: 0; } ' +
-    'entry { transition: none; }',
-    [rgb and $FF, (rgb shr 8) and $FF, (rgb shr 16) and $FF]);
-  GGtkCss := gtk_css_provider_new;
-  gtk_css_provider_load_from_data(GGtkCss, PChar(css), -1, nil);
-  gtk_style_context_add_provider_for_screen(screen, PGtkStyleProvider(GGtkCss),
-    GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  ApplyGtk3Style;
 end;
 {$ELSE}
 begin

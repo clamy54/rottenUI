@@ -55,6 +55,9 @@ procedure AddEditCommands(AMenu: TPopupMenu; AEdit: TCustomEdit);
 
 implementation
 
+uses
+  uGtk3Style;
+
 type
   TEditCommandItem = class(TMenuItem)
   public
@@ -169,6 +172,7 @@ var
   i: Integer;
 begin
   if APopup = nil then Exit;
+  ApplyGtk3Style;
   APopup.OwnerDraw := True;
   for i := 0 to APopup.Items.Count - 1 do
     ThemeMenuItems(APopup.Items[i]);
@@ -295,6 +299,7 @@ begin
     end;
     ThemeMenuItems(pm.Items);
   end;
+  ApplyGtk3Style;
   Invalidate;
 end;
 
@@ -325,6 +330,7 @@ end;
 
 procedure TRSMenuBar.RefreshTheme;
 begin
+  ApplyGtk3Style;
   SetMenuFont(Font);
   Invalidate;
 end;
@@ -391,6 +397,7 @@ begin
       if Assigned(FRootClicks[i]) then
         FRootClicks[i](Sender);
       ThemeMenuItems(FMenus[i].Items);
+      ApplyGtk3Style;
       Exit;
     end;
 end;
