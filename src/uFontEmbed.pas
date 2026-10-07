@@ -4,11 +4,9 @@ unit uFontEmbed;
 
 {$mode objfpc}{$H+}
 
-// Polices embarquees (Monaspace Frozen, JetBrainsMono NL Nerd Font Mono)
-// enregistrees pour ce seul process depuis les ressources RCDATA du binaire
-// (reprise de RottenSSHrimp). Sans repli sur un dossier fonts/ externe: en cas
-// d'echec, la fonte systeme du widgetset s'applique et l'echec est signale.
-// Aucune dependance LCL.
+// Polices embarquees (Monaspace Frozen, JetBrainsMono NL Nerd Font Mono), enregistrees
+// pour ce seul process depuis les ressources du binaire. Pas de dossier fonts/ externe:
+// si ca rate, le widgetset garde sa fonte systeme et l'echec est signale. Aucune LCL ici.
 
 interface
 
@@ -28,10 +26,10 @@ procedure LoadEmbeddedFonts;
 
 function MonaspaceAvailable: Boolean;
 function MonaspaceFamilyCount: Integer;
-function MonaspaceFamilyKey(AIndex: Integer): string;   // 'Neon', 'JetBrainsMono'...
-function MonaspaceFamilyLabel(AIndex: Integer): string; // libelle pour l'utilisateur
-function MonaspaceDefaultFamily: string;                // 'Monaspace Neon Frozen'
-function MonaspaceTerminalDefaultFamily: string;        // 'Monaspace Radon Frozen'
+function MonaspaceFamilyKey(AIndex: Integer): string;
+function MonaspaceFamilyLabel(AIndex: Integer): string;
+function MonaspaceDefaultFamily: string;
+function MonaspaceTerminalDefaultFamily: string;
 function ResolveMonaspace(const AValue: string): string;
 
 implementation
@@ -44,8 +42,6 @@ uses
   {$IF DEFINED(LINUX) OR DEFINED(DARWIN)}BaseUnix,{$ENDIF}
   uSafeSave;
 
-// fontes et leurs licences OFL, produites par tools/gen_res.py: tout
-// programme qui utilise cette unite les embarque
 {$R rottenui_fonts.res}
 
 const
@@ -57,31 +53,27 @@ const
     'KRYPTON_REGULAR', 'KRYPTON_BOLD', 'KRYPTON_ITALIC', 'KRYPTON_BOLDITALIC',
     'JETBRAINSMONO_REGULAR', 'JETBRAINSMONO_BOLD', 'JETBRAINSMONO_ITALIC',
     'JETBRAINSMONO_BOLDITALIC');
-  // famille et style de chaque ressource, dans l'ordre de FontRes
   ResFam: array[0..23] of Integer = (
     0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5);
   ResStyle: array[0..23] of Integer = (
     0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3);
   FontFamily = 'Monaspace Neon Frozen';
 
-  // whitelist: seules ces familles sont acceptees d'un theme ou des prefs
+  // Liste blanche: un theme ou des prefs ne choisissent que parmi ces familles.
   FamKeys: array[0..5] of string =
     ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono');
-  // nom de famille tel que la table name du TTF le declare (CreateFont)
+  // Noms exacts de la table name des TTF: CreateFont ne reconnait rien d'autre.
   FamFull: array[0..5] of string = (
     'Monaspace Neon Frozen', 'Monaspace Argon Frozen', 'Monaspace Xenon Frozen',
     'Monaspace Radon Frozen', 'Monaspace Krypton Frozen', 'JetBrainsMonoNL NFM');
-  // libelle montre dans le dialogue de police
   FamLabel: array[0..5] of string = (
     'Monaspace Neon Frozen', 'Monaspace Argon Frozen', 'Monaspace Xenon Frozen',
     'Monaspace Radon Frozen', 'Monaspace Krypton Frozen',
     'JetBrains Mono NL Nerd Font');
-  // prefixe des fichiers du repli fonts/ a cote de l'exe
   FamFile: array[0..5] of string = (
     'MonaspaceNeonFrozen-', 'MonaspaceArgonFrozen-', 'MonaspaceXenonFrozen-',
     'MonaspaceRadonFrozen-', 'MonaspaceKryptonFrozen-',
     'JetBrainsMonoNLNerdFontMono-');
-  // Styles attendus par famille (les quatre partout aujourd'hui)
   FamStyleCount: array[0..5] of Integer = (4, 4, 4, 4, 4, 4);
   StyleSuffix: array[0..3] of string = ('Regular', 'Bold', 'Italic', 'BoldItalic');
 
@@ -89,7 +81,8 @@ var
   FamStyleLoaded: array[0..5, 0..3] of Boolean;
   FontsLoaded: Boolean;
 
-// Famille incomplete: CreateFont par nom fallbackerait en silence ailleurs.
+// Famille incomplete, famille refusee: CreateFont par nom retomberait en silence sur
+// une autre police pour le style manquant.
 function FamComplete(AFam: Integer): Boolean;
 var
   s: Integer;
@@ -119,7 +112,7 @@ end;
 
 function MonaspaceAvailable: Boolean;
 begin
-  Result := FamComplete(0); // Neon = police de base
+  Result := FamComplete(0);
 end;
 
 function MonaspaceFamilyCount: Integer;
@@ -173,7 +166,7 @@ end;
 function OpenFontRes(const AName: string): TResourceStream;
 begin
   try
-    Result := TResourceStream.Create(HINSTANCE, AName, PChar(PtrUInt(10))); // RT_RCDATA
+    Result := TResourceStream.Create(HINSTANCE, AName, PChar(PtrUInt(10)));
   except
     on EResNotFound do Result := nil;
   end;
@@ -236,8 +229,8 @@ begin
     Result := fn(nil, PAnsiChar(APath)) <> 0;
 end;
 
-// Pango fige ses familles avant notre main: sans ca, la police reste invisible
-// et le texte sort en systeme, sans une erreur.
+// Pango fige sa liste de familles avant notre main. Sans ce rappel, la police enregistree
+// reste invisible et le texte sort en fonte systeme, sans la moindre erreur.
 procedure NotifyFontconfigChanged;
 type
   TGetDefaultMap = function: Pointer; cdecl;
@@ -274,7 +267,8 @@ begin
   url := CFURLCreateFromFileSystemRepresentation(nil, PAnsiChar(APath),
     Length(APath), False);
   if url = nil then Exit;
-  // 3e param = var CFErrorRef, pas un pointeur nullable: variable dediee
+  // Le binding FPC prend le 3e parametre en var CFErrorRef, pas en pointeur nullable:
+  // il lui faut une vraie variable, nil ne passe pas.
   err := nil;
   Result := CTFontManagerRegisterFontsForURL(url, kCTFontManagerScopeProcess, err) <> 0;
   if (not Result) and (err <> nil) then CFRelease(err);
@@ -298,8 +292,8 @@ begin
   Result := fpChmod(PChar(ADir), &700) = 0;
 end;
 
-// Le cache n'est jamais cru: reecrit a chaque lancement, un .ttf depose la par
-// un tiers est ecrase avant lecture.
+// Le cache disque n'est jamais cru: reecrit a chaque lancement, un .ttf glisse la par un
+// tiers est ecrase avant d'etre lu.
 function LoadFromResources: Boolean;
 var
   i: Integer;
@@ -336,7 +330,7 @@ begin
         else
           DeleteFile(tmp);
       except
-        if tmp <> '' then DeleteFile(tmp); // pas de temp orphelin
+        if tmp <> '' then DeleteFile(tmp);
       end;
     finally
       rs.Free;
@@ -363,10 +357,10 @@ begin
   if FontsLoaded then Exit;
   FontsLoaded := True;
   {$IF DEFINED(LINUX) OR DEFINED(DARWIN)}
-  // process eleve: rien du disque, le parseur de fontes est la surface
+  // Process eleve: rien n'est lu sur disque. Un parseur de fontes nourri par un fichier
+  // tiers, c'est une surface d'attaque avec de jolies ligatures.
   if Elevated then Exit;
   {$ENDIF}
-  // ressources du binaire uniquement: aucun dossier fonts/ externe (UX-03)
   LoadFromResources;
   {$IFDEF LINUX}
   NotifyFontconfigChanged;
@@ -397,12 +391,12 @@ begin
   if MonaspaceAvailable then
     Result := UnicodeString(FontFamily)
   else
-    Result := ''; // l'appelant garde la police par defaut du widgetset
+    Result := '';
 end;
 
 function TEmbeddedFontManager.TerminalFontName: UnicodeString;
 begin
-  Result := UiFontName; // meme famille dans le MVP
+  Result := UiFontName;
 end;
 
 function TEmbeddedFontManager.IsFallbackActive: Boolean;

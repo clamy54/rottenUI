@@ -5,10 +5,9 @@ unit uTheme;
 {$mode objfpc}{$H+}
 {$IFDEF LCLCocoa}{$modeswitch objectivec1}{$ENDIF}
 
-// Jetons de couleur et polices en globales, remplacables a chaud par
-// uThemeLoad (reprise de RottenSSHrimp, completee des jetons d'editeur de
-// RottenText et des jetons de difference). Chaque controle les relit a son
-// dessin: appliquer un theme = ecrire les globales puis repeindre.
+// Jetons de couleur et polices en globales, remplacables a chaud par uThemeLoad. Chaque
+// controle les relit en se dessinant: appliquer un theme, c'est ecrire les globales puis
+// tout repeindre en esperant que personne n'a mis la couleur en cache.
 
 interface
 
@@ -16,9 +15,8 @@ uses
   Graphics, Controls;
 
 var
-  // '' / 0 = defauts du widgetset (fontes embarquees absentes)
   RSUiFontName: string = '';
-  RSUiFontSize: Integer = 10;     // onglets et menus, base 96 DPI
+  RSUiFontSize: Integer = 10;
   RSTreeFontSize: Integer = 10;
   RSEditorFontName: string = '';
   RSEditorFontSize: Integer = 12;
@@ -33,13 +31,11 @@ var
   clTabStrip, clTabActive, clTabInactive, clTabHover, clTabActiveText,
     clTabInactiveText, clTabIcon, clTabIconHi, clTabDead: TColor;
 
-  // editeur LDIF et vues texte (RottenText)
   clEditorBg, clEditorFg, clCurrentLine, clSelectionBg, clSelectionFg, clCaret,
     clGutterBg, clGutterFg: TColor;
   clCodeComment, clCodeString, clCodeNumber, clCodeKeyword, clCodeType,
     clCodeInvalid, clCodeFunction, clCodeVariable: TColor;
 
-  // differences: toujours accompagnees d'un symbole et d'un libelle
   clDiffEqual, clDiffAdded, clDiffAbsent, clDiffChanged, clDiffWarning,
     clDiffUnknown: TColor;
 
@@ -52,8 +48,7 @@ var
   clScpOk, clScpWarn, clScpErr: TColor;
   clProgressBar, clProgressTrack: TColor;
 
-  // editeur de texte (RottenText): absents d'un theme, ils sont deduits de ses
-  // autres couleurs (uThemeData.DeriveEditorTokens)
+  // editeur de texte: un theme qui les oublie les voit deduits de ses autres couleurs
   clSelectionInactive, clGutterFgCur, clGutterCurBg, clRightEdge,
     clMinimapViewport: TColor;
   clTabActiveDim, clTabActiveTextDim, clModifiedDot, clTabGlyph, clMacroRec,
@@ -66,29 +61,23 @@ var
   // (uThemeLoad); l'application les charge et les enregistre
   PrefUiFontSize: Integer = 10;        // points, interface et arbres; 0 = systeme
   PrefEditorFontSize: Integer = 0;     // 0 = taille du theme
-  // famille de l'editeur choisie par l'utilisateur (cle de uFontEmbed),
-  // prioritaire sur celle du theme; '' = celle du theme
+  // cle uFontEmbed, prioritaire sur le theme; '' = celle du theme
   PrefEditorFontKey: string = '';
-  // bornes de la taille de l'editeur. Un editeur de texte les elargit avant
-  // InitThemes; les autres gardent celles de l'interface.
+  // un editeur de texte les elargit avant InitThemes
   EditorFontSizeMin: Integer = 10;
   EditorFontSizeMax: Integer = 14;
 
 const
-  // tailles de police (points) lisibles et sures pour les mises en page;
-  // pour agrandir davantage, l'echelle de Windows agrandit tout d'un bloc
   FONT_SIZE_MIN = 10;
   FONT_SIZE_MAX = 14;
 
-// Taille ramenee dans [FONT_SIZE_MIN, FONT_SIZE_MAX]
 function ClampFontSize(ASize: Integer): Integer;
-// Taille ramenee dans [EditorFontSizeMin, EditorFontSizeMax]
 function ClampEditorFontSize(ASize: Integer): Integer;
 
 procedure ApplyDefaultFonts;
-// recursif sur les enfants; les composants natifs n'y passent pas
 procedure ApplyUiFont(AControl: TControl);
-// RGB 0xRRGGBB -> TColor (0xBBGGRR): conversion testee, jamais de transtypage
+// TColor est en BGR: on convertit, jamais de transtypage, sinon rouge et bleu s'echangent
+// sans un bruit.
 function RgbHexToColor(ARgb: Cardinal): TColor;
 function ColorToRgbHex(AColor: TColor): Cardinal;
 function BlendColor(A, B: TColor; APct: Integer): TColor;
@@ -96,13 +85,11 @@ function IsDarkColor(AColor: TColor): Boolean;
 // mesure hors ecran, police de l'interface
 function UiTextHeight(const ASample: string): Integer;
 function UiTextWidth(const ASample: string): Integer;
-// police d'un dialogue (ApplyUiFont): famille de l'interface, taille du
-// systeme. Pour caler une colonne de libelles sur le plus long.
+// police d'un dialogue: de quoi caler une colonne sur son plus long libelle
 function DialogTextWidth(const ASample: string): Integer;
 // remet les jetons aux valeurs du theme Rotten compile
 procedure ResetRottenDefaults;
-// Cocoa: l'apparence native (barres de titre, menus, selection des champs)
-// suit clAppBg et non le bureau. Sans effet ailleurs.
+// Cocoa: barres de titre, menus et selection suivent clAppBg, pas le bureau. Ailleurs: rien.
 procedure SyncNativeAppearance;
 
 implementation
@@ -260,7 +247,6 @@ end;
 
 procedure ResetRottenDefaults;
 begin
-  // palette de reference "Rotten" (cahier des charges 4.2)
   clAppBg := RgbHexToColor($1E1E1E);
   clAppFg := RgbHexToColor($D4D4D4);
   clAccent := RgbHexToColor($FB9E6B);

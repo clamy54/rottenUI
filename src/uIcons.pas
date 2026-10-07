@@ -4,11 +4,9 @@ unit uIcons;
 
 {$mode objfpc}{$H+}
 
-// Icones embarquees ICON_<ID>_<TAILLE>: masques Tabler (trace blanc,
-// transparence de l'icone) colores a l'execution. La couleur vient du theme
-// (etat, accent, texte), la variante des listes suit la luminance reelle du
-// fond. Identifiants stables: ils peuvent etre enregistres dans les profils
-// (icone d'un profil).
+// Icones embarquees: masques Tabler qui ne portent que la transparence, colores a
+// l'execution par le theme. Les identifiants finissent dans les profils: les renommer,
+// c'est casser les profils des autres sans les prevenir.
 
 interface
 
@@ -20,23 +18,14 @@ uses
 function IconIndex(const AId: string): Integer;
 function IconCount: Integer;
 function IconIdAt(AIndex: Integer): string;
-// Taille physique pour une taille logique et une densite donnees
 function IconPixelSize(ALogical, APixelsPerInch: Integer): Integer;
-// Taille physique pour une taille logique a la densite de l'ecran
 function ScreenIconSize(ALogical: Integer): Integer;
-// Liste d'images dont l'index est celui du catalogue
 function BuildIconList(AOwner: TComponent; APixelSize: Integer; AOnDark: Boolean): TImageList;
-// Nouveau bitmap (a liberer): trace clair sur fond sombre, sombre sinon
 function LoadIconBitmap(const AId: string; APixelSize: Integer; AOnDark: Boolean): TBitmap;
-// Nouveau bitmap (a liberer) du masque colore en AColor; nil si l'icone ou
-// la taille n'est pas embarquee
 function LoadIconTinted(const AId: string; APixelSize: Integer; AColor: TColor): TBitmap;
-// Bitmap partage (ne pas liberer), garde pour la duree du processus; nil si
-// absent. Pour le dessin repete (grilles, en-tetes)
 function IconBitmap(const AId: string; APixelSize: Integer; AColor: TColor): TBitmap;
 
 type
-  // Icone coloree a la taille logique voulue, centree dans le controle
   TRtIcon = class(TGraphicControl)
   private
     FIconId: string;
@@ -52,13 +41,10 @@ type
     function PixelSize: Integer;
     property IconId: string read FIconId;
     property IconColor: TColor read FIconColor write SetIconColor;
-    // en haut du controle (a cote d'un texte sur plusieurs lignes) plutot
-    // que centree verticalement
     property TopAligned: Boolean read FTopAligned write FTopAligned;
   end;
 
 const
-  // traces des listes (arbre, barre laterale), repris des anciennes variantes
   ICON_ON_DARK = TColor($D4D4D4);
   ICON_ON_LIGHT = TColor($2B2B2B);
 
@@ -67,8 +53,6 @@ implementation
 uses
   LCLType, Forms, IntfGraphics, FPImage;
 
-// masques PNG ICON_<ID>_<TAILLE> et licence Tabler, produits par
-// tools/gen_res.py: tout programme qui utilise cette unite les embarque
 {$R rottenui_icons.res}
 
 var
@@ -98,7 +82,6 @@ var
   want, i: Integer;
 begin
   want := (ALogical * APixelsPerInch + 48) div 96;
-  // taille disponible la plus proche par valeur superieure, sinon la plus grande
   for i := 0 to High(ICON_SIZES) do
     if ICON_SIZES[i] >= want then Exit(ICON_SIZES[i]);
   Result := ICON_SIZES[High(ICON_SIZES)];
@@ -132,7 +115,6 @@ begin
       png.LoadFromStream(rs);
       img := png.CreateIntfImage;
       tint := TColorToFPColor(ColorToRGB(AColor));
-      // le masque ne porte que la transparence: la couleur est celle du theme
       for y := 0 to img.Height - 1 do
         for x := 0 to img.Width - 1 do
         begin
@@ -177,7 +159,6 @@ begin
   i := GCache.IndexOf(key);
   if i >= 0 then Exit(TBitmap(GCache.Objects[i]));
   Result := LoadIconTinted(AId, APixelSize, AColor);
-  // absente aussi memorisee: pas de relecture des ressources a chaque dessin
   GCache.AddObject(key, Result);
 end;
 
@@ -194,7 +175,6 @@ begin
     bmp := LoadIconBitmap(ICON_IDS[i], APixelSize, AOnDark);
     if bmp = nil then
     begin
-      // emplacement vide: les index restent alignes sur le catalogue
       bmp := TBitmap.Create;
       bmp.SetSize(APixelSize, APixelSize);
       bmp.Transparent := True;
@@ -206,8 +186,6 @@ begin
     end;
   end;
 end;
-
-{ TRtIcon }
 
 constructor TRtIcon.Create(AOwner: TComponent);
 begin

@@ -19,16 +19,56 @@ Lazarus trunk (5 ou plus) ; GTK2 reste possible avec la 4.8.
 | `uThemeLoad`, `uThemeData`, `uThemePreview` | registre des thèmes (intégrés, embarqués, JSON utilisateur), application, aperçu |
 | `uFontEmbed` | fontes embarquées, enregistrées pour le seul processus |
 | `uIcons` (+ `uIconCatalog.inc`) | icônes Tabler en masques teintés à l'exécution, `TRtIcon` |
-| `uUiKit` | `TRtDialog` et aides de mise en page (rangées, boutons, mémos, état) |
+| `uUiKit` | `TRtDialog` et aides de mise en page (rangées, zone défilante, boutons, mémos, état) |
 | `uRtMessage` | boîtes de message et de saisie |
 | `uRtCombo`, `uRtCheck`, `uRtButton`, `uRtList` | liste déroulante, case à cocher, bouton, liste |
 | `uTabBar`, `uMenuBar`, `uSearchBox`, `uTreeScrollBar`, `uPickDialog` | onglets, barre de menus, recherche, défilement, choix |
 | `uDocTabBar` | onglets de documents pour un éditeur, pilotés par événements : témoins modifié, lecture seule et enregistrement, réordonnancement, bouton « + » |
+| `uRtStatusBar` | barre de statut dessinée : panneaux de largeur fixe ou prenant la place restante, alignement, couleur de texte par panneau demandée au dessin |
+| `uRtLogList` | journal borné sur `TRtListGrid` : heure en première colonne, le plus récent en haut, chaque message ramené sur une ligne |
+| `uRtGauge` | jauge dessinée, à progression connue ou indéterminée (bloc qui défile) ; `TThemedGauge` en est l'alias |
+| `uRtProgress` | dialogue de suivi d'un travail long : sujet, état, jauge, détail, élément en cours, Stop puis Close ; fermer en plein travail vaut Stop |
+| `uRtAbout` | À propos alimenté par l'application (nom, version, lignes, liens, logo, détails) et visionneuse de licences lues dans les ressources du binaire |
+| `uRtWizard` | échafaudage d'assistant posé dans un `TRtDialog` : bandeau, étapes, pages, Back/Next, validation à chaque changement de page |
+| `uRtSecretEdit` | champ de saisie masqué à la main (`TRtSecretEdit`), sans champ sécurisé natif : presse-papiers et annulation fermés tant qu'il est masqué, menu contextuel réduit alors à « Paste », affichage en clair sur demande, tampon effacé sur demande et à la destruction |
+| `uRtPassword` | dialogue de mot de passe sur `TRtDialog` : un champ ou nouveau + confirmation, case « Show », refus affiché sans fermer (`OnValidate`), secret rendu en copie à effacer |
 | `uThemedControls`, `uThemedSplitter`, `uNoticeBanner` | bouton, case, liste, onglets et séparateur dessinés ; bandeau d'avis |
 | `uSafeSave`, `uJsonGuard` | écriture atomique et lecture bornée de fichiers, garde JSON |
 
 Ressources : `src/rottenui_fonts.res` (lié par `uFontEmbed`), `src/rottenui_icons.res`
 (`uIcons`), `src/rottenui_themes.res` (`uThemeLoad`).
+
+## Quelle famille de contrôles
+
+Le kit en porte deux, qui se recouvrent en partie. Aucune ne remplace l'autre, et un
+programme peut mêler les deux (`RtMessageDlg` sert aux trois applications) ; un même
+dialogue s'en tient à une seule.
+
+| | « Rt » : `uUiKit`, `uRt*`, `uPickDialog` | « Themed » : `uThemedControls` |
+|---|---|---|
+| Utilisée par | Rottentree | RottenSSHrimp, RottenText |
+| Dialogue | hérite de `TRtDialog` : en-tête (serveur cible, icône), corps, barre de boutons | n'importe quel `TForm`, passé à `ThemeDialog` |
+| Mise en page | par alignement, avec les aides `Make…` (rangées à libellé, zone défilante) | laissée telle quelle, positions absolues comprises |
+| Contrôles natifs | recolorés par `ThemeControlTree` : champs, mémos, listes, arbres, grilles, zones défilantes, séparateurs | champs encadrés sur place, panneaux, libellés (couleur par `Tag`) |
+| Boutons | `TButton` natifs ; `TRtFlatButton` plat, à icône | `TThemedButton` dessiné (`Default`, `Cancel`, `ModalResult`) |
+| Case à cocher | `TRtCheckBox` : deux états, libellé sur plusieurs lignes | `TThemedCheck` : trois états (`AllowGrayed`) |
+| Liste déroulante | `TRtComboBox` : liste maison qui défile et se filtre, taillée pour des centaines d'éléments | `TThemedCombo` : s'ouvre en menu, pour une poignée de choix |
+| En plus | `TRtListGrid`, `TRtLogList`, `TRtStatusBar`, `TRtSegmented`, `TRtStepper`, `TPickDialog`, `TRtProgressDialog`, `TRtAboutDialog`, `TRtLicenseViewer`, `TRtWizard`, `TRtPasswordDialog` | `TThemedTabs` |
+
+Écran neuf construit par code, dense en données ou en longues listes : « Rt ». Formulaire
+déjà posé au pixel, ou contrôle natif à remplacer sans toucher au reste : « Themed ».
+
+La jauge `TRtGauge` (`uRtGauge`) sert aux deux familles : elle se peint seule et ne dépend
+que du thème. Elle vit dans sa propre unité parce qu'utiliser `uThemedControls` embarque
+aussi ses réglages Cocoa (anneau de focus des champs mot de passe), dont un programme
+« Rt » n'a pas à hériter.
+
+Le champ masqué `TRtSecretEdit` (`uRtSecretEdit`) sert lui aussi aux deux familles : c'est un
+`TEdit`, que `ThemeControlTree` comme `ThemeDialog` encadrent et colorent avec les autres
+champs (`MakeSecretRow` le pose dans une rangée « Rt »). Il n'emploie ni `PasswordChar` ni
+`EchoMode` : sous Cocoa, ils feraient du champ un champ sécurisé natif, avec le « secure
+event input » qui l'accompagne. Lire `Text` ne rend que ce qui est affiché ; le secret sort
+par `GetSecret`, en copie que l'appelant efface avec `RtWipeSecret`.
 
 ## Utiliser le kit dans un projet
 

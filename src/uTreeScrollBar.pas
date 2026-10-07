@@ -1,12 +1,12 @@
-{ Scrollbar verticale themee: la LCL laisse les barres de la TTreeView au
-  widgetset natif, gris systeme en plein theme sombre. La molette glisse vers une
-  cible ACCUMULEE; un positionnement direct (pouce, clavier) annule l'animation.
-
-  Copyright (C) 2024 - 2026 Cyril LAMY
-  SPDX-License-Identifier: GPL-3.0-or-later }
+// Copyright (C) 2024 - 2026 Cyril LAMY
+// SPDX-License-Identifier: GPL-3.0-or-later
 unit uTreeScrollBar;
 
 {$mode objfpc}{$H+}
+
+// Barre de defilement themee: la LCL laisse celles de la TTreeView au widgetset natif,
+// gris systeme en plein theme sombre. La molette glisse vers une cible accumulee, un
+// positionnement direct (pouce, clavier) annule l'animation.
 
 interface
 
@@ -14,7 +14,6 @@ uses
   Classes, SysUtils, Types, Controls, ComCtrls, ExtCtrls, Graphics, LMessages;
 
 type
-  { Defilement en PIXELS: la meme barre pilote l'arbre ou un terminal. }
   IThemedScrollTarget = interface
     ['{4E3C1A62-9B7D-4C0E-8F21-5A6D2B9C1E44}']
     function ScrollViewportHeight: Integer;
@@ -67,7 +66,7 @@ type
 
   TTreeScrollBar = class(TCustomControl)
   private
-    // meme objet deux fois: l'interface pilote, le TControl fait FreeNotification
+    // Le meme objet deux fois: l'interface pilote, le TControl recoit FreeNotification.
     FTarget: IThemedScrollTarget;
     FTargetCtl: TControl;
     FDragging: Boolean;
@@ -92,7 +91,6 @@ type
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
   public
     constructor Create(AOwner: TComponent); override;
-    // Sans IThemedScrollTarget la barre reste inerte; nil pour delier.
     procedure Bind(ATarget: TControl);
     procedure ApplyTheme(ATrough, AThumb, AThumbHover: TColor);
   end;
@@ -104,11 +102,9 @@ uses
 
 const
   THUMB_INSET = 2;
-  MIN_THUMB   = 28;  // en dessous, le pouce n'est plus attrapable
+  MIN_THUMB   = 28;
   THUMB_RADIUS = 6;
-  WHEEL_TICK_MS = 15;  // ~60 Hz, WM_TIMER ne descend pas plus bas
-
-{ TScrollTreeView }
+  WHEEL_TICK_MS = 15;  // WM_TIMER ne descend pas plus bas
 
 function TScrollTreeView.GetScrollTop: Integer;
 begin
@@ -117,7 +113,7 @@ end;
 
 procedure TScrollTreeView.SetScrollTop(AValue: Integer);
 begin
-  WheelStop;   // un positionnement direct prime sur l'animation
+  WheelStop;
   ScrolledTop := AValue;
 end;
 
@@ -133,7 +129,6 @@ var
   target, maxTop: Integer;
 begin
   if ADelta = 0 then Exit;
-  // le cran s'ajoute a la CIBLE, pas a l'offset courant: sinon ca se traine
   if FWheelActive then
     target := FWheelTarget + ADelta
   else
@@ -163,12 +158,12 @@ begin
     WheelStop;
     Exit;
   end;
-  step := dist div 3;   // amorti exponentiel, plancher a 1 px en fin de course
+  step := dist div 3;
   if step = 0 then
     if dist > 0 then step := 1 else step := -1;
   ScrolledTop := cur + step;
   if ScrolledTop = cur then
-    WheelStop;   // cible devenue inatteignable (arbre replie sous nos pieds)
+    WheelStop;   // cible inatteignable, l'arbre s'est replie sous nos pieds
 end;
 
 procedure TScrollTreeView.WheelScrollBy(AWheelDelta: Integer);
@@ -176,16 +171,14 @@ var
   px: Integer;
 begin
   px := -((AWheelDelta * Mouse.WheelScrollLines * DefaultItemHeight) div 120);
-  // macOS: PAS de correction de signe, on suit le reglage « defilement
-  // naturel » que Cocoa a deja applique -- meme parite que le terminal, sinon
-  // les deux moities de la fenetre defilent en sens contraire.
+  // macOS: AUCUNE correction de signe. Cocoa a deja applique le defilement naturel, et
+  // le terminal fait pareil: sinon les deux moities de la fenetre defilent en sens contraire.
   AnimateScrollBy(px);
 end;
 
-// Aucun defilement horizontal: sans barre horizontale (ssNone), rien ne
-// permettrait de revenir au bord gauche, et les signes de la racine seraient
-// tronques. Sous macOS un geste lateral du trackpad arrive par la molette
-// horizontale ou, via l'hote de defilement de Cocoa, par LM_HSCROLL.
+// Aucun defilement horizontal: sans barre horizontale, rien ne ramenerait au bord gauche
+// et la racine resterait tronquee. Sous macOS le trackpad passe par la molette
+// horizontale ou, via l'hote de defilement de Cocoa, par LM_HSCROLL. On bouche les deux.
 function TScrollTreeView.DoMouseWheelHorz(Shift: TShiftState; WheelDelta: Integer;
   MousePos: TPoint): Boolean;
 begin
@@ -201,12 +194,10 @@ end;
 function TScrollTreeView.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
   MousePos: TPoint): Boolean;
 begin
-  // pas d'inherited: TCustomTreeView sauterait d'un bloc, sec a l'oeil
+  // Pas d'inherited: TCustomTreeView sauterait d'un bloc, sans animation.
   WheelScrollBy(WheelDelta);
   Result := True;
 end;
-
-{ TScrollTreeView -- IThemedScrollTarget }
 
 function TScrollTreeView.ScrollViewportHeight: Integer;
 begin
@@ -245,14 +236,14 @@ end;
 
 procedure TScrollTreeView.KeyDown(var Key: Word; Shift: TShiftState);
 begin
-  // la LCL positionne sans passer par SetScrollTop: l'animation tirerait ailleurs
+  // La LCL repositionne au clavier sans passer par SetScrollTop: l'animation en cours
+  // tirerait ailleurs.
   WheelStop;
   inherited KeyDown(Key, Shift);
 end;
 
-// Selection multiple: la LCL ne connait que Ctrl+clic. Sous macOS c'est Cmd
-// qui ajoute a la selection (Ctrl+clic y est le clic droit): on le presente
-// comme Ctrl avant de laisser faire.
+// La LCL ne connait que Ctrl+clic pour la selection multiple. Sous macOS c'est Cmd, et
+// Ctrl+clic y vaut clic droit: on deguise Cmd en Ctrl avant de laisser faire.
 procedure TScrollTreeView.MouseDown(Button: TMouseButton; Shift: TShiftState;
   X, Y: Integer);
 begin
@@ -279,9 +270,8 @@ begin
   FAutoLineColor := TreeLineColor;
 end;
 
-// Traits de liaison: la LCL les veut en clWindowFrame, noir sous Cocoa quel
-// que soit le theme. Deduits du texte et du fond de l'arbre, tant que
-// l'application n'a pas pose sa propre couleur.
+// La LCL trace les traits en clWindowFrame: noir sous Cocoa, theme ou pas. Deduits de
+// l'arbre, sauf si l'application a pose sa couleur.
 procedure TScrollTreeView.SyncLineColor;
 var
   fg: TColor;
@@ -300,8 +290,6 @@ begin
   if Assigned(FOnViewChanged) then
     FOnViewChanged(Self);
 end;
-
-{ TTreeScrollBar }
 
 constructor TTreeScrollBar.Create(AOwner: TComponent);
 begin
@@ -361,7 +349,6 @@ begin
 end;
 
 function TTreeScrollBar.ThumbMetrics(out AThumbH, ATrack: Integer): Boolean;
-// Source unique: piste calculee deux fois = pouce decroche des que thumbH clampe.
 var
   viewport, maxScroll, content, h: Integer;
 begin
@@ -388,7 +375,6 @@ begin
   Result := Rect(0, 0, 0, 0);
   if not ThumbMetrics(thumbH, track) then Exit;
   if FDragging then
-    // colle au curseur, pas a l'offset relu de l'arbre: sinon il sautille
     thumbTop := FDragThumbTop
   else
   begin
@@ -484,7 +470,8 @@ begin
     end;
     FDragThumbTop := newTop;
     ScrollToThumbTop(newTop);
-    // Update force: sous capture, WM_MOUSEMOVE affame les WM_PAINT differes
+    // Update force: sous capture, le flot de WM_MOUSEMOVE affame les WM_PAINT differes et
+    // le pouce reste fige pendant qu'on le tire.
     Invalidate;
     Update;
     if FTargetCtl <> nil then

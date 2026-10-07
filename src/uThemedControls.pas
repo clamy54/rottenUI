@@ -15,7 +15,7 @@ interface
 
 uses
   Classes, SysUtils, Types, Controls, StdCtrls, ExtCtrls, Forms, Graphics,
-  Menus, LCLType, uTheme;
+  Menus, LCLType, uTheme, uRtGauge;
 
 const
   // Tag d'un TLabel: couleur secondaire (aide) ou d'avertissement.
@@ -161,17 +161,8 @@ type
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
 
-  TThemedGauge = class(TGraphicControl)
-  private
-    FPosition, FMax: Integer;
-    procedure SetPosition(AValue: Integer);
-  protected
-    procedure Paint; override;
-  public
-    constructor Create(AOwner: TComponent); override;
-    property Position: Integer read FPosition write SetPosition;
-    property Max: Integer read FMax write FMax;
-  end;
+  // La jauge vit dans uRtGauge: la tirer d'ici embarquerait aussi les reglages Cocoa de cette unite.
+  TThemedGauge = TRtGauge;
 
 function ThemeFieldColor: TColor;
 function ContrastTextColor(AColor: TColor): TColor;
@@ -357,8 +348,7 @@ end;
 
 {$IFDEF LCLCocoa}
 type
-  // Cocoa: une fenetre qui gagne ou perd le clavier ne change pas de premier
-  // repondeur, donc ni OnEnter ni OnExit: le cadre restait a l'etat d'avant.
+  // Cocoa: changer de fenetre active ne declenche ni OnEnter ni OnExit, le cadre restait fige.
   TKeyWindowWatch = objcclass(NSObject)
     procedure keyChanged(ANote: NSNotification); message 'keyChanged:';
   end;
@@ -551,41 +541,6 @@ begin
   AForm.KeyPreview := True;
   if (AForm is TForm) and not Assigned(TForm(AForm).OnKeyDown) then
     TForm(AForm).OnKeyDown := @GFramer.FormKeyDown;
-end;
-
-constructor TThemedGauge.Create(AOwner: TComponent);
-begin
-  inherited Create(AOwner);
-  FMax := 100;
-  Height := 12;
-  Width := 200;
-end;
-
-procedure TThemedGauge.SetPosition(AValue: Integer);
-begin
-  if AValue < 0 then AValue := 0;
-  if AValue > FMax then AValue := FMax;
-  if AValue = FPosition then Exit;
-  FPosition := AValue;
-  Invalidate;
-end;
-
-procedure TThemedGauge.Paint;
-var
-  r: TRect;
-begin
-  r := ClientRect;
-  Canvas.Pen.Style := psClear;
-  Canvas.Brush.Style := bsSolid;
-  Canvas.Brush.Color := clProgressTrack;
-  Canvas.FillRect(r);
-  if (FMax > 0) and (FPosition > 0) then
-  begin
-    r.Right := r.Left + (r.Right - r.Left) * FPosition div FMax;
-    Canvas.Brush.Color := clProgressBar;
-    Canvas.FillRect(r);
-  end;
-  Canvas.Pen.Style := psSolid;
 end;
 
 procedure FocusRing(ACanvas: TCanvas; const R: TRect);
@@ -1341,8 +1296,7 @@ end;
 
 {$IFDEF LCLCocoa}
 initialization
-  // Cocoa: la LCL retire l'anneau de focus natif des champs ordinaires, pas
-  // de ceux a mot de passe: il doublait le cadre peint par le panneau.
+  // Cocoa: l'anneau de focus natif survit sur les champs mot de passe et double le cadre.
   // Par classe: basculer PasswordChar recree la vue.
   CocoaConfigFocusRing.setStrategy(TCocoaConfigFocusRing.Strategy.none,
     NSSTR('TCocoaSecureTextField'));

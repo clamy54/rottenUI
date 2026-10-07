@@ -8,10 +8,11 @@ unit RottenUI;
 interface
 
 uses
-  uFontEmbed, uIcons, uJsonGuard, uMenuBar, uPickDialog, uRtButton, uRtCheck, 
-  uRtCombo, uRtList, uRtMessage, uSafeSave, uSearchBox, uTabBar, uTheme, 
-  uThemeData, uThemeLoad, uThemePreview, uTreeScrollBar, uUiKit, uNoticeBanner, 
-  uThemedControls, uThemedSplitter, uDocTabBar;
+  uFontEmbed, uIcons, uJsonGuard, uMenuBar, uPickDialog, uRtButton, uRtCheck,
+  uRtCombo, uRtList, uRtMessage, uSafeSave, uSearchBox, uTabBar, uTheme,
+  uThemeData, uThemeLoad, uThemePreview, uTreeScrollBar, uUiKit, uNoticeBanner,
+  uThemedControls, uThemedSplitter, uDocTabBar, uRtStatusBar, uRtLogList,
+  uRtGauge, uRtProgress, uRtAbout, uRtWizard, uRtSecretEdit, uRtPassword;
 
 implementation
 

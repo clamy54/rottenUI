@@ -4,14 +4,9 @@ unit uRtList;
 
 {$mode objfpc}{$H+}
 
-// Liste en colonnes de la coque, dessinee aux couleurs du theme (l'en-tete du
-// TListView natif de Windows reste clair). Deux modes: virtuel (OnGetCell,
-// adapte aux dizaines de milliers de resultats) ou valeurs stockees. Avec
-// FillWidth, les colonnes occupent toute la largeur en gardant leurs
-// proportions (celles qu'impose l'utilisateur en les redimensionnant).
-// Avec Sortable, un clic sur un en-tete trie l'affichage par cette colonne
-// (un second clic inverse l'ordre); les indices exposes (ItemIndex,
-// OnSelectRow, OnActivateRow, CellText) restent ceux des donnees.
+// Liste en colonnes dessinee aux couleurs du theme: l'en-tete du TListView natif de
+// Windows reste clair, meme a minuit. Mode virtuel pour les dizaines de milliers de
+// resultats, tri a l'affichage seulement: les indices exposes restent ceux des donnees.
 
 interface
 
@@ -21,31 +16,30 @@ uses
 type
   TRtGetCellEvent = function(Sender: TObject; AIndex, ACol: Integer): string of object;
   TRtSelectEvent = procedure(Sender: TObject; AIndex: Integer) of object;
-  // icone Tabler devant le texte d'une cellule ('' = aucune) et sa couleur
   TRtGetCellIconEvent = function(Sender: TObject; AIndex, ACol: Integer;
     out AColor: TColor): string of object;
 
   TRtListGrid = class(TDrawGrid)
   private
     FCaptions: TStringList;
-    FRows: TList;                 // TStringList par ligne (mode stocke)
+    FRows: TList;
     FCount: Integer;
     FOnGetCell: TRtGetCellEvent;
     FOnSelectRow: TRtSelectEvent;
     FLastSelected: Integer;
-    FWeights: array of Integer;   // largeurs relatives des colonnes (FillWidth)
+    FWeights: array of Integer;
     FFillWidth: Boolean;
     FFitting: Boolean;
     FOnActivateRow: TRtSelectEvent;
     FOnGetCellIcon: TRtGetCellIconEvent;
     FSortable: Boolean;
-    FSortCol: Integer;            // -1: ordre des donnees
+    FSortCol: Integer;
     FSortDesc: Boolean;
-    FOrder: array of Integer;     // ligne affichee -> indice de donnee (vide: identite)
-    FPlace: array of Integer;     // indice de donnee -> ligne affichee
+    FOrder: array of Integer;
+    FPlace: array of Integer;
     FShowHeader: Boolean;
     FStretchLast: Boolean;
-    FRowColor: TColor;            // clDefault: couleurs du theme (clAppBg/clAppFg)
+    FRowColor: TColor;
     FRowTextColor: TColor;
     function DataIndex(ADisplay: Integer): Integer;
     function DisplayIndex(AData: Integer): Integer;
@@ -74,34 +68,24 @@ type
     destructor Destroy; override;
     procedure ClearColumns;
     procedure AddColumn(const ACaption: string; AWidth: Integer);
-    // mode stocke
-    procedure Clear;
+    procedure Clear; virtual;
     function AddRow(const AValues: array of string): Integer;
-    function CellText(AIndex, ACol: Integer): string;
+    function CellText(AIndex, ACol: Integer): string; virtual;
     procedure RefreshMetrics;
-    // nombre de lignes de donnees (mode virtuel ou stocke)
     property Count: Integer read FCount write SetCount;
     property ItemIndex: Integer read GetItemIndex write SetItemIndex;
     property OnGetCell: TRtGetCellEvent read FOnGetCell write FOnGetCell;
     property OnSelectRow: TRtSelectEvent read FOnSelectRow write FOnSelectRow;
-    // double clic ou Entree sur une ligne de donnees
     property OnActivateRow: TRtSelectEvent read FOnActivateRow write FOnActivateRow;
     property FillWidth: Boolean read FFillWidth write SetFillWidth;
     property OnGetCellIcon: TRtGetCellIconEvent read FOnGetCellIcon write FOnGetCellIcon;
-    // icone d'une cellule de donnees ('' sans OnGetCellIcon)
     function CellIcon(AIndex, ACol: Integer; out AColor: TColor): string;
-    // tri de l'affichage (ACol -1: ordre des donnees); la ligne selectionnee
-    // reste la meme donnee
     procedure SortBy(ACol: Integer; ADescending: Boolean);
     property Sortable: Boolean read FSortable write FSortable;
     property SortedColumn: Integer read FSortCol;
     property SortedDescending: Boolean read FSortDesc;
-    // False: ligne d'en-tete de hauteur nulle (colonnes fixes, sans titres)
     property ShowHeader: Boolean read FShowHeader write SetShowHeader;
-    // sans FillWidth: la derniere colonne occupe le reste de la largeur (au
-    // moins sa largeur demandee), la ligne selectionnee va jusqu'au bord
     property StretchLastColumn: Boolean read FStretchLast write SetStretchLast;
-    // fond et texte des lignes non selectionnees; clDefault suit le theme
     property RowColor: TColor read FRowColor write FRowColor;
     property RowTextColor: TColor read FRowTextColor write FRowTextColor;
   end;
@@ -112,7 +96,6 @@ uses
   Forms, Math, LazUTF8, uTheme, uIcons;
 
 const
-  // icone de cellule (taille logique)
   CELL_ICON = 16;
 
 function TRtListGrid.CellIcon(AIndex, ACol: Integer; out AColor: TColor): string;
@@ -224,7 +207,6 @@ begin
     used := 0;
     for i := 0 to High(FWeights) do
     begin
-      // la derniere colonne prend le reste: aucun vide ni debordement
       if i = High(FWeights) then
         w := avail - used
       else
@@ -249,14 +231,12 @@ var
   i: Integer;
 begin
   inherited HeaderSized(IsColumn, Index);
-  // colonne elargie ou reduite: la derniere reprend le reste
   if IsColumn and FStretchLast and not FFillWidth then
   begin
     FitColumns;
     Exit;
   end;
   if not IsColumn or not FFillWidth or (Length(FWeights) <> ColCount) then Exit;
-  // les proportions choisies a la souris deviennent la nouvelle repartition
   for i := 0 to High(FWeights) do
     FWeights[i] := ColWidths[i];
   FitColumns;
@@ -274,9 +254,8 @@ begin
     FOnActivateRow(Self, DataIndex(r - 1));
 end;
 
-// Clic sur la ligne deja courante (celle surlignee apres un remplissage):
-// aucun deplacement, donc pas d'AfterMoveSelection; la selection est
-// quand meme signalee si elle n'a pas encore ete vue
+// Clic sur la ligne deja courante: la grille ne bouge pas, donc pas d'AfterMoveSelection.
+// La selection est signalee ici si personne ne l'a encore vue.
 procedure TRtListGrid.Click;
 begin
   inherited Click;
@@ -302,7 +281,6 @@ begin
   try
     bmp.Canvas.Font.Assign(Font);
     DefaultRowHeight := bmp.Canvas.TextHeight('Ag') + 8;
-    // une icone de cellule tient dans la ligne, avec 2 px de marge
     if Assigned(FOnGetCellIcon) and (DefaultRowHeight < ScreenIconSize(CELL_ICON) + 4) then
       DefaultRowHeight := ScreenIconSize(CELL_ICON) + 4;
   finally
@@ -334,7 +312,6 @@ begin
   FOrder := nil;
   FPlace := nil;
   RowCount := FCount + 1;
-  // nouvelles donnees: l'ordre choisi s'applique encore
   if FSortCol >= 0 then ApplySort;
   Invalidate;
 end;
@@ -355,8 +332,6 @@ begin
     Result := AData;
 end;
 
-// Texte ou nombre: deux entiers se comparent par leur valeur, le reste sans
-// tenir compte de la casse
 function CompareCellTexts(const A, B: string): Integer;
 var
   na, nb: Int64;
@@ -394,7 +369,6 @@ begin
     SetLength(tmp, n);
     for i := 0 to n - 1 do
       src[i] := i;
-    // tri fusion stable: les egaux gardent l'ordre des donnees
     span := 1;
     while span < n do
     begin
@@ -447,8 +421,6 @@ begin
     for i := 0 to n - 1 do
       FPlace[FOrder[i]] := i;
   end;
-  // meme donnee selectionnee, a sa nouvelle place (aucun evenement: c'est
-  // deja la derniere signalee)
   if (sel >= 0) and (sel < FCount) then
     Row := DisplayIndex(sel) + 1;
   Invalidate;
@@ -582,7 +554,6 @@ begin
   textRight := ARect.Right - 4;
   if (ARow = 0) and (ACol = FSortCol) then
   begin
-    // colonne de tri: triangle vers le haut (croissant) ou le bas
     h := (ARect.Bottom - ARect.Top) div 5;
     if h < 3 then h := 3;
     cx := ARect.Right - 8 - h;

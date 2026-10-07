@@ -4,8 +4,9 @@ unit uTabBar;
 
 {$mode objfpc}{$H+}
 
-// Barre d'onglets dessinee a la main, pilotant un TPageControl aux onglets
-// natifs masques. Aucun type de session concret ici: tout passe par evenements.
+// Barre d'onglets dessinee a la main, qui pilote un TPageControl aux onglets natifs
+// masques. Elle ignore tout des sessions: on lui parle par evenements, comme a un
+// collegue d'un autre service.
 
 interface
 
@@ -14,13 +15,11 @@ uses
   LCLType, uTheme;
 
 type
-  // tgkDead: flux rompu, onglet garde ouvert et ferme a la main
   TTabGlyphKind = (tgkNone, tgkBusy, tgkConnected, tgkFailed, tgkDead);
 
   TTabInfoEvent = procedure(APage: TTabSheet; out AName: string;
     out AGlyph: TTabGlyphKind) of object;
   TTabActionEvent = procedure(APage: TTabSheet) of object;
-  // nil si indisponible; la barre devient proprietaire du bitmap
   TTabThumbEvent = function(APage: TTabSheet): TBitmap of object;
 
   TTabSlot = record
@@ -68,7 +67,6 @@ type
     procedure DrawStateGlyph(const R: TRect; AKind: TTabGlyphKind);
     function InfoFor(APage: TTabSheet; out AGlyph: TTabGlyphKind): string;
     function TabAt(X: Integer; out AClose: Boolean): Integer;
-    // page retenue par la barre: sa destruction sera notifiee (E02)
     procedure Track(APage: TTabSheet);
   protected
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
@@ -85,7 +83,6 @@ type
     procedure Attach(APages: TPageControl);
     procedure RefreshBar;
     procedure RefreshTheme;
-    // geste en cours abandonne: appui, glissement, capture et survol differe
     procedure CancelGesture;
     property OnInfo: TTabInfoEvent read FOnInfo write FOnInfo;
     property OnActivateTab: TTabActionEvent read FOnActivate write FOnActivate;
@@ -111,7 +108,7 @@ const
   DRAG_THRESH = 6;
 
 type
-  // THintWindow ne vole pas le focus; son Paint ignore OnPaint, on peint nous-memes
+  // THintWindow ne vole pas le focus, mais son Paint ignore OnPaint: on peint nous-memes.
   TThumbHint = class(THintWindow)
   private
     FBmp: TBitmap;
@@ -119,7 +116,7 @@ type
     procedure Paint; override;
   public
     destructor Destroy; override;
-    procedure SetImage(ABmp: TBitmap);   // prend possession de ABmp
+    procedure SetImage(ABmp: TBitmap);
   end;
 
 destructor TThumbHint.Destroy;
@@ -133,7 +130,7 @@ begin
   if ABmp = FBmp then Exit;
   FreeAndNil(FBmp);
   FBmp := ABmp;
-  // fenetre remontree aux memes dimensions = pas de repeint, donc vieille image
+  // Fenetre remontree aux memes dimensions: pas de repeint, et l'ancienne image reste.
   if HandleAllocated then
     Invalidate;
 end;
@@ -183,13 +180,12 @@ end;
 
 procedure TSessionTabBar.Track(APage: TTabSheet);
 begin
-  // sans doublon (TComponent); jamais retiree: la liste suit les pages vivantes
   if APage <> nil then APage.FreeNotification(Self);
 end;
 
-// Une page detruite pendant un geste (verrouillage, fermeture par un autre
-// chemin) ne reste jamais referencee: appui, survol et miniature oublies
-// avant qu'un relachement ou un deplacement ne la transmette (E02)
+// Une page detruite pendant un geste (verrouillage, fermeture par un autre chemin) ne
+// reste jamais referencee: appui, survol et miniature sont oublies avant qu'un
+// relachement ne transmette un pointeur vers une page qui n'existe plus.
 procedure TSessionTabBar.Notification(AComponent: TComponent; Operation: TOperation);
 begin
   inherited Notification(AComponent, Operation);
@@ -454,7 +450,7 @@ begin
   if not Assigned(FOnThumb) or (APage = nil) then Exit;
   if (FPages = nil) or (APage = FPages.ActivePage) then Exit;
 
-  // par PAGE et pas par index: les onglets bougent pendant le delai de survol
+  // Par PAGE et pas par index: les onglets bougent pendant le delai de survol.
   slot := -1;
   for i := 0 to High(FSlots) do
     if FSlots[i].Page = APage then
@@ -490,7 +486,7 @@ begin
   anchorX := FSlots[slot].Full.Left;
   if anchorX < FTabsLeft then anchorX := FTabsLeft;
   p := ClientToScreen(Point(anchorX, ClientHeight + 1));
-  // anti-flicker LCL: ActivateHint ne fait rien au meme rect, d'ou le cache/montre
+  // ActivateHint ne fait rien au meme rect (anti-scintillement LCL): d'ou le cache/montre.
   TThumbHint(FThumb).Visible := False;
   TThumbHint(FThumb).ActivateHint(Rect(p.X, p.Y, p.X + cw, p.Y + ch), '');
   TThumbHint(FThumb).Invalidate;
@@ -511,7 +507,6 @@ begin
   Canvas.Brush.Color := clTabStrip;
   Canvas.FillRect(ClientRect);
 
-  // l'onglet glisse est dessine EN DERNIER: il passe au-dessus des autres
   dragSlot := -1;
   if FDragging and (FPressedPage <> nil) then
     for i := 0 to High(FSlots) do
@@ -594,7 +589,7 @@ begin
     end
     else
     begin
-      // activer ICI couperait le suivi souris sous Cocoa: on arme seulement
+      // Activer ICI couperait le suivi souris sous Cocoa: on arme seulement.
       FPressedPage := pg;
       Track(pg);
       FDragStartX := X;
@@ -628,7 +623,7 @@ var
   over: TTabSheet;
 begin
   if (FPages = nil) or (FPressedPage = nil) then Exit;
-  // comparaison de pointeur seulement: rien n'est lu d'une page absente
+  // Comparaison de pointeur seulement: rien n'est lu d'une page peut-etre deja liberee.
   if FPages.IndexOf(FPressedPage) < 0 then
   begin
     CancelGesture;
@@ -636,7 +631,6 @@ begin
   end;
   over := DragOverPage(X);
   if (over = nil) or (over = FPressedPage) then Exit;
-  // l'ordre des onglets est purement UI: aucun modele ne le persiste
   FPressedPage.PageIndex := over.PageIndex;
   if FPages.ActivePage <> FPressedPage then
     FPages.ActivePage := FPressedPage;
@@ -651,8 +645,8 @@ var
 begin
   inherited MouseMove(Shift, X, Y);
 
-  // bouton relache hors de la barre (capture perdue, dialogue modal): aucun
-  // relachement ne viendra, le geste est abandonne
+  // Bouton relache hors de la barre (capture perdue, dialogue modal): aucun relachement ne
+  // viendra, le geste est abandonne.
   if (FPressedPage <> nil) and not (ssLeft in Shift) then CancelGesture;
   if FPressedPage <> nil then
   begin
@@ -702,7 +696,7 @@ begin
   inherited MouseUp(Button, Shift, X, Y);
   if (Button = mbLeft) and (FPressedPage <> nil) then
   begin
-    // geste clos AVANT le rappel: il peut fermer ou detruire des pages
+    // Geste clos AVANT le rappel: il peut fermer ou detruire des pages sous nos pieds.
     pg := FPressedPage;
     dragged := FDragging;
     FPressedPage := nil;

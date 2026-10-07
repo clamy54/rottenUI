@@ -4,12 +4,9 @@ unit uThemeLoad;
 
 {$mode objfpc}{$H+}
 
-// Registre des themes: Rotten, Light et Nord (RottenSSHrimp), les 16 themes de
-// RottenText embarques en ressources (sans leurs Rotten et Nord, doublons des
-// themes de la coque), puis les JSON du dossier utilisateur.
-// Les collisions de nom deviennent des variantes nommees: aucun fichier n'en
-// ecrase un autre. Appliquer = resoudre toutes les couleurs, puis ecrire les
-// globales de uTheme d'un bloc; un theme invalide n'entre jamais au registre.
+// Registre des themes: ceux compiles, ceux embarques en ressources, puis les JSON du
+// dossier utilisateur. Deux themes du meme nom deviennent des variantes, aucun n'ecrase
+// l'autre, et un theme invalide n'entre jamais au registre.
 
 interface
 
@@ -24,16 +21,10 @@ function CurrentThemeIndex: Integer;
 function CurrentThemeName: string;
 function ApplyThemeIndex(AIndex: Integer): Boolean;
 function ApplyThemeByName(const AName: string): Boolean;
-// Couleurs resolues d'un theme (ordre TColor) et ses familles de fontes, sans
-// l'appliquer: apercu des preferences
 function ThemePreview(AIndex: Integer; out AColors: TThemeColors; out AUiFont,
   AEditorFont: string): Boolean;
-// Avertissements de chargement propres a un theme (cles inconnues...)
 function ThemeWarnings(AIndex: Integer): TStringArray;
-// themes utilisateur refuses ou avertissements, pour les preferences
 function ThemeDiagnostics: TStrings;
-// Dossier des themes JSON de l'utilisateur: ThemesUserDir si l'application
-// l'a pose avant InitThemes, sinon <dossier de configuration>/themes
 function UserThemesDir: string;
 
 var
@@ -46,7 +37,6 @@ implementation
 uses
   LCLType, uTheme, uFontEmbed, uSafeSave;
 
-// themes embarques (THEME_*), produits par tools/gen_res.py
 {$R rottenui_themes.res}
 
 const
@@ -174,8 +164,8 @@ begin
         Continue;
       end;
       try
-        // fichier ordinaire seulement; taille lue une fois, lecture bornee a
-        // cette capacite (G01)
+        // Fichier ordinaire seulement, taille lue une fois et lecture bornee a cette capacite:
+        // un FIFO ou un fichier qui enfle pendant la lecture ne bloquent pas le demarrage.
         fs := OpenRegularFileRead(dir + PathDelim + sr.Name, notReg);
         if fs = nil then
         begin
@@ -266,7 +256,7 @@ begin
   Result := False;
   if (AIndex < 0) or (AIndex > High(GThemes)) then Exit;
   d := GThemes[AIndex];
-  // resolution complete d'abord: aucune globale n'est ecrite si un jeton manque
+  // Tout est resolu avant d'ecrire la moindre globale: pas de theme a moitie applique.
   cs := ResolveColors(d.Colors);
   clAppBg := C(cs, ttAppBg);
   clAppFg := C(cs, ttAppFg);
@@ -372,13 +362,12 @@ begin
       if fam <> '' then RSEditorFontName := fam;
     end;
   end;
-  // taille du theme bornee comme celle de l'utilisateur (un theme utilisateur
-  // peut en declarer une de 6 a 72)
+  // Un theme utilisateur peut declarer de 6 a 72 points: on le borne comme l'utilisateur,
+  // les mises en page n'ont pas signe pour du 72.
   if d.EditorSize > 0 then
     RSEditorFontSize := ClampEditorFontSize(d.EditorSize)
   else
     RSEditorFontSize := 12;
-  // les tailles choisies par l'utilisateur priment sur celles du theme
   if PrefEditorFontSize > 0 then
     RSEditorFontSize := ClampEditorFontSize(PrefEditorFontSize);
   if PrefUiFontSize = 0 then

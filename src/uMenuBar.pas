@@ -4,13 +4,9 @@ unit uMenuBar;
 
 {$mode objfpc}{$H+}
 
-// Barre de menu custom Windows/Linux: titres peints aux couleurs du theme,
-// une racine = un TPopupMenu owner-draw. macOS n'utilise PAS cette unite, son
-// TMainMenu part au menu global natif.
-//
-// La barre ADOPTE le TMainMenu de uFrmMain: les enfants de chaque racine sont
-// DEPLACES (pas clones, les FMiXxx du formulaire doivent rester valides) dans
-// le popup correspondant.
+// Barre de menu peinte aux couleurs du theme pour Windows et Linux, une racine par
+// TPopupMenu owner-draw. macOS s'en passe: son TMainMenu part au menu global natif.
+// Les items du TMainMenu sont deplaces, pas clones: le formulaire garde ses references.
 
 interface
 
@@ -51,12 +47,10 @@ type
     procedure RefreshTheme;
   end;
 
+// Sans effet sous Cocoa, dont les menus restent natifs: pas de garde a poser chez l'appelant.
 procedure ThemePopupMenu(APopup: TPopupMenu);
-// a rappeler sur les items crees dynamiquement, ils naissent sans handler
+// Les items crees a la volee naissent sans handler de dessin: repasser derriere eux.
 procedure ThemeMenuItems(AItem: TMenuItem);
-// Separateur puis Cut, Copy, Paste, Select all agissant sur AEdit: un menu
-// propre a un champ en cours d'edition remplace le menu natif sans faire
-// perdre le presse-papiers
 procedure AddEditCommands(AMenu: TPopupMenu; AEdit: TCustomEdit);
 
 implementation
@@ -65,7 +59,7 @@ type
   TEditCommandItem = class(TMenuItem)
   public
     FTarget: TCustomEdit;
-    FCmd: Integer;   // 0 couper, 1 copier, 2 coller, 3 tout selectionner
+    FCmd: Integer;
     procedure Click; override;
   end;
 
@@ -124,7 +118,8 @@ const
   MENU_FONT_SIZE = 10;
 
 type
-  // TMenuItem exige des methodes d'objet: il faut bien un porteur
+  // TMenuItem n'accepte que des methodes d'objet: cette classe sans etat n'existe que
+  // pour les porter.
   TRSMenuRenderer = class
     procedure DrawItem(Sender: TObject; ACanvas: TCanvas; ARect: TRect;
       AState: TOwnerDrawState);
@@ -149,6 +144,15 @@ begin
   Result := StringReplace(S, '&', '', [rfReplaceAll]);
 end;
 
+{$IFDEF LCLCocoa}
+procedure ThemeMenuItems(AItem: TMenuItem);
+begin
+end;
+
+procedure ThemePopupMenu(APopup: TPopupMenu);
+begin
+end;
+{$ELSE}
 procedure ThemeMenuItems(AItem: TMenuItem);
 var
   i: Integer;
@@ -169,8 +173,7 @@ begin
   for i := 0 to APopup.Items.Count - 1 do
     ThemeMenuItems(APopup.Items[i]);
 end;
-
-{ TRSMenuRenderer }
+{$ENDIF}
 
 procedure TRSMenuRenderer.MeasureItem(Sender: TObject; ACanvas: TCanvas;
   var AWidth, AHeight: Integer);
@@ -229,9 +232,9 @@ begin
   if mi.Checked then
   begin
     if mi.RadioItem then
-      ACanvas.TextOut(ARect.Left + 10, ty, #$E2#$80#$A2)   // puce (radio)
+      ACanvas.TextOut(ARect.Left + 10, ty, #$E2#$80#$A2)
     else
-      ACanvas.TextOut(ARect.Left + 10, ty, #$E2#$9C#$93);  // coche
+      ACanvas.TextOut(ARect.Left + 10, ty, #$E2#$9C#$93);
   end;
   ACanvas.TextOut(ARect.Left + 28, ty, StripAmp(mi.Caption));
 
@@ -243,7 +246,8 @@ begin
   end;
   ACanvas.Brush.Style := bsSolid;
   {$IFDEF LCLGtk3}
-  // GTK3 ne dessine pas la fleche
+  // GTK3 ne dessine pas la fleche de sous-menu sur un item owner-draw. On la dessine,
+  // sinon personne ne devine qu'il y a une suite.
   if mi.Count > 0 then
   begin
     if mi.Enabled then ACanvas.Brush.Color := clMenuText
@@ -255,8 +259,6 @@ begin
   end;
   {$ENDIF}
 end;
-
-{ TRSMenuBar }
 
 constructor TRSMenuBar.Create(AOwner: TComponent);
 begin
@@ -384,8 +386,8 @@ begin
   for i := 0 to High(FMenus) do
     if FMenus[i] = Sender then
     begin
-      // rejouer le OnClick de la racine d'origine (Favorites/Recent se
-      // reconstruisent la), PUIS habiller ce qu'il vient de creer
+      // Le OnClick de la racine d'origine reconstruit Favoris et Recents: le rejouer, puis
+      // habiller ce qu'il vient de creer.
       if Assigned(FRootClicks[i]) then
         FRootClicks[i](Sender);
       ThemeMenuItems(FMenus[i].Items);

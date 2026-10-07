@@ -4,11 +4,9 @@ unit uRtCheck;
 
 {$mode objfpc}{$H+}
 
-// Case a cocher de la coque, dessinee aux couleurs du theme: la case native
-// de Windows (visual styles) ignore la couleur du texte et l'ecrit en noir,
-// illisible sur fond sombre. Interface volontairement proche de TCheckBox:
-// Checked, Caption, OnChange puis OnClick a chaque changement d'etat, par
-// l'utilisateur comme par programme (meme ordre que la LCL).
+// Case a cocher dessinee aux couleurs du theme. La case native de Windows (visual styles)
+// ignore la couleur du texte et l'ecrit en noir: sur fond sombre, autant cocher a l'aveugle.
+// Meme contrat que TCheckBox: OnChange puis OnClick, par l'utilisateur comme par code.
 
 interface
 
@@ -41,7 +39,6 @@ type
       WithThemeSpace: Boolean); override;
   public
     constructor Create(AOwner: TComponent); override;
-    // bascule comme un clic (changement d'etat, OnChange puis OnClick)
     procedure Toggle;
     property Checked: Boolean read FChecked write SetChecked;
     property Caption;
@@ -57,14 +54,14 @@ uses
 const
   GAP = 7;
   PAD_Y = 3;
-  // marge gauche de la case: Cocoa trace le contour a cheval sur la
-  // coordonnee, un cadre pose en x = 0 perdait son bord gauche
+  // Cocoa trace le contour a cheval sur la coordonnee: un cadre pose en x = 0 perdait
+  // son bord gauche.
   BOX_X = 1;
 
 constructor TRtCheckBox.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  // le clic est rendu par Toggle, jamais par la LCL (pas de double OnClick)
+  // Le clic passe par Toggle et jamais par la LCL, sinon OnClick part deux fois.
   ControlStyle := ControlStyle - [csClickEvents, csDoubleClicks, csAcceptsControls];
   TabStop := True;
   ParentColor := True;
@@ -80,7 +77,6 @@ begin
   Dec(Result, 2);
 end;
 
-// rectangle du texte (repli dans AWidth), calcule dans la police courante
 function TRtCheckBox.TextRectFor(AWidth: Integer): TRect;
 var
   flags: Cardinal;
@@ -131,7 +127,6 @@ begin
   r := ClientRect;
   Canvas.FillRect(r);
   b := BoxSize;
-  // case alignee sur la premiere ligne du texte
   cy := PAD_Y + (Canvas.TextHeight('Ag') - b) div 2;
   if cy < 0 then cy := 0;
   box := Rect(BOX_X, cy, BOX_X + b, cy + b);
@@ -155,7 +150,6 @@ begin
   Canvas.RoundRect(box.Left, box.Top, box.Right, box.Bottom, 4, 4);
   if FChecked then
   begin
-    // coche du fond de l'editeur sur l'accent: lisible dans les deux themes
     Canvas.Pen.Color := clEditorBg;
     Canvas.Pen.Width := 2;
     Canvas.Line(box.Left + b * 22 div 100, box.Top + b * 52 div 100,
@@ -210,7 +204,6 @@ begin
   was := FPressed;
   FPressed := False;
   Invalidate;
-  // relache sur la case ou son libelle seulement
   if was and Enabled and PtInRect(ClientRect, Point(X, Y)) then Toggle;
 end;
 
@@ -269,7 +262,6 @@ end;
 procedure TRtCheckBox.DoOnResize;
 begin
   inherited DoOnResize;
-  // texte replie: la hauteur suit la largeur
   if Align in [alTop, alBottom, alClient] then
   begin
     InvalidatePreferredSize;

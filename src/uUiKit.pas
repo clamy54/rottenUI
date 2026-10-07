@@ -4,22 +4,20 @@ unit uUiKit;
 
 {$mode objfpc}{$H+}
 
-// Construction par code des controles (pas de .lfm, comme dans RottenSSHrimp)
-// et dialogue de base. Comme dans RottenSSHrimp, la coque et ses onglets sont
-// themes, et les dialogues aussi (TRtDialog.ShellThemed, actif par defaut):
-// couleurs, polices, onglets dessines, themes clairs comme sombres.
-// Tout dialogue d'operation affiche le serveur cible en tete; les
-// confirmations d'ecriture affichent DN, type d'operation et nombre d'entrees.
+// Controles construits par code, sans .lfm, et dialogue de base aux couleurs du theme.
+// Tout dialogue d'operation affiche le serveur cible en tete, et une confirmation
+// d'ecriture montre DN, operation et nombre d'entrees: personne ne doit decouvrir
+// apres coup sur quel annuaire il vient de cliquer OK.
 
 interface
 
 uses
   Classes, SysUtils, Controls, Forms, StdCtrls, ExtCtrls, Graphics, ComCtrls, Grids,
-  Buttons, LCLType, uTheme, uRtCheck;
+  Buttons, Spin, LCLType, uTheme, uRtCheck, uRtCombo, uRtSecretEdit;
 
 type
-  // En-tete d'onglets dessine aux couleurs du theme, pour un TPageControl sans
-  // onglets natifs (les onglets Win32 ignorent les couleurs).
+  // En-tete d'onglets dessine pour un TPageControl sans onglets natifs: ceux de Win32
+  // ignorent les couleurs.
   TRtPageHeader = class(TCustomControl)
   private
     FPages: TPageControl;
@@ -34,19 +32,25 @@ type
 
   TUiState = (usOk, usWarning, usError, usMuted);
 
-  // Hote qui deborde le TPageControl de quelques pixels: sans onglets, Win32
-  // dessine encore un cadre clair que les couleurs du theme ne couvrent pas
+  // Hote qui deborde le TPageControl de quelques pixels: meme sans onglets, Win32 dessine
+  // encore un cadre clair que le theme ne couvre pas.
   TBorderlessHost = class(TCustomPanel)
   protected
     procedure Resize; override;
   end;
 
+  // Zone defilante aux couleurs du theme. Windows oublie le mode sombre des barres a
+  // chaque recreation du handle: il est repose a chaque fois.
+  TRtScrollBox = class(TScrollBox)
+  protected
+    procedure CreateWnd; override;
+  public
+    constructor Create(AOwner: TComponent); override;
+  end;
+
 const
-  // Tag d'un controle dont la police (taille, graisse) est choisie par son createur
   TAG_KEEP_FONT = 7701;
-  // Tag d'une ligne "libelle: champ" (MakeFieldRow): largeur du libelle ajustee
   TAG_FIELD_ROW = 7702;
-  // grille d'un dialogue entouree du cadre arrondi du theme (StyleGrid)
   TAG_FRAMED_GRID = 7703;
 
 type
@@ -66,89 +70,67 @@ type
   protected
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure DoShow; override;
-    // couleurs et polices du theme de la coque (ShellThemed); appele par
-    // ApplyTheme puis a l'affichage, quand les controles natifs ont leur
-    // handle (cases a cocher, listes). Une surcharge recolore ensuite ses
-    // libelles d'etat
     procedure ApplyShellColors; virtual;
   public
     constructor CreateDialog(AOwner: TComponent; const ACaption: string; AWidth, AHeight: Integer);
     procedure SetTarget(const AServer, ABadge: string);
-    // Icone Tabler de l'en-tete: le bandeau s'affiche avec elle, suivie du
-    // serveur cible s'il y en a un, sinon du titre du dialogue
     procedure SetIcon(const AId: string);
     function HeaderIconId: string;
     function HeaderText: string;
     function AddButton(const ACaption: string; AResult: TModalResult; ADefault: Boolean = False;
       ACancel: Boolean = False): TButton;
     procedure ApplyTheme; virtual;
-    // Hauteur ajustee au contenu du corps (controles alTop), bornee a la
-    // zone de travail de l'ecran; appele aussi a l'affichage si FitOnShow
     procedure FitHeightToContent;
     property Body: TPanel read FBody;
     property ButtonBar: TPanel read FButtons;
-    // le dialogue suit le theme de la coque au lieu des controles du systeme
     property ShellThemed: Boolean read FShellThemed write FShellThemed;
-    // la hauteur suit le contenu (polices du theme, libelles sur deux lignes)
     property FitOnShow: Boolean read FFitOnShow write FFitOnShow;
   end;
 
 function MakePanel(AParent: TWinControl; AAlign: TAlign; ASize: Integer = 0): TPanel;
 function MakeLabel(AParent: TWinControl; const ACaption: string; AAlign: TAlign = alTop): TLabel;
+// Libelle qui affiche une donnee: le "&" d'un DN ou d'un filtre n'y est pas un raccourci
+// clavier, quoi qu'en pense la LCL.
+function MakeDataLabel(AParent: TWinControl; const ACaption: string; AAlign: TAlign = alTop): TLabel;
 function MakeEdit(AParent: TWinControl; AAlign: TAlign = alTop): TEdit;
 function MakeCheck(AParent: TWinControl; const ACaption: string; AAlign: TAlign = alTop): TRtCheckBox;
-function MakeCombo(AParent: TWinControl; const AItems: array of string; AAlign: TAlign = alTop): TComboBox;
+// Combo du kit, a poser dans une rangee: en alTop, ThemeControlTree la centre dans tout son parent.
+function MakeCombo(AParent: TWinControl; const AItems: array of string; AAlign: TAlign = alClient): TRtComboBox;
 function MakeButton(AParent: TWinControl; const ACaption: string; AOnClick: TNotifyEvent;
   AAlign: TAlign = alLeft): TButton;
 function MakeMemo(AParent: TWinControl; AAlign: TAlign = alClient): TMemo;
-// Ligne "libelle: champ" empilee en haut d'un conteneur. ALabelWidth est un
-// minimum: FitFieldLabels elargit les libelles d'un meme conteneur a la
-// largeur du plus long, dans la police reelle
 function MakeFieldRow(AParent: TWinControl; const ACaption: string; ALabelWidth: Integer = 150): TPanel;
-// Aligne les libelles des lignes de champ de chaque conteneur sous ARoot: meme
-// largeur, celle du texte le plus long; au-dela d'AMaxWidth, le libelle passe
-// sur deux lignes au lieu d'etre tronque
+// Rangee a libelle et son champ: la rangee est le Parent du controle rendu.
+function MakeEditRow(AParent: TWinControl; const ACaption: string; ALabelWidth: Integer = 150): TEdit;
+function MakeSecretRow(AParent: TWinControl; const ACaption: string; ALabelWidth: Integer = 150): TRtSecretEdit;
+function MakeComboRow(AParent: TWinControl; const ACaption: string; const AItems: array of string;
+  ALabelWidth: Integer = 150): TRtComboBox;
+function MakeSpinRow(AParent: TWinControl; const ACaption: string; AMin, AMax, AValue: Integer;
+  ALabelWidth: Integer = 150): TSpinEdit;
+function MakeScrollArea(AParent: TWinControl; out AContent: TPanel; AAlign: TAlign = alClient): TRtScrollBox;
 procedure FitFieldLabels(ARoot: TWinControl; AMaxWidth: Integer);
 procedure ThemeControlTree(AControl: TControl);
-// Polices embarquees pour ce que l'application ne cree pas elle-meme: aides
-// (info-bulles) de tous les controles. A appeler a chaque theme
 procedure ApplyGlobalFonts;
 procedure StackTop(AControl: TControl);
-// alLeft: ordre de creation de gauche a droite; alRight: le premier cree a droite
 procedure ArrangeByCreation(AParent: TWinControl);
+// La LCL range un controle alTop redimensionne ou re-affiche d'apres son Top du moment,
+// apres ses voisins: l'ordre de creation se perd. On le remet, enfants compris.
+procedure StackByCreation(AParent: TWinControl);
 function MonoFontName: string;
-// Zone de texte: police de l'interface, cadre du theme (voir ThemeControlTree)
 procedure StyleMemo(AMemo: TCustomMemo);
-// TPageControl de la coque avec en-tete dessine
 function MakePages(AParent: TWinControl): TPageControl;
-// Nouvel onglet et son panneau de contenu aux couleurs du theme (le fond
-// natif d'un onglet reste blanc); le contenu se construit dans le panneau,
-// l'onglet est son Parent
 function AddPageBody(APages: TPageControl; const ACaption: string): TPanel;
 function FontTextHeight(AFont: TFont): Integer;
-// Hauteur des libelles empiles (alTop) de AParent, chacun dans sa police,
-// marges comprises: un bandeau dimensionne ainsi n'est jamais coupe par une
-// police plus grande, contrairement a une hauteur fixe
 function StackedLabelsHeight(AParent: TWinControl): Integer;
-// Place un TPageControl sans onglets dans un hote qui masque son cadre natif
 procedure HostWithoutBorder(APages: TPageControl);
 procedure ThemeSplitter(ASplitter: TSplitter);
-// Barres de defilement et en-tetes natifs sombres ou clairs selon le fond du
-// theme (Windows 10 1809+); sans effet ailleurs
 procedure ApplyNativeDarkMode(AControl: TWinControl);
-// macOS: apparence de toute l'application (Aqua ou DarkAqua) selon le fond du
-// theme: listes, boutons, cases et textes desactives natifs suivent; sans
-// effet ailleurs. A rappeler a chaque changement de theme.
 procedure ApplyNativeAppearance;
-// Retrait d'un arbre: au moins le signe plus/moins et 3 px de chaque cote,
-// quels que soient la police et la mise a l'echelle (le retrait par defaut de
-// la LCL en depend), pour que le signe de la racine ne touche jamais le bord.
-// A rappeler apres tout changement de police.
+// Le retrait par defaut de la LCL depend de la police et de l'echelle: on garantit le
+// signe plus/moins et 3 px de chaque cote, sinon celui de la racine colle au bord.
 procedure FitTreeIndent(ATree: TTreeView);
 procedure SelectPage(APages: TPageControl; AIndex: Integer);
-// Couleur d'etat des dialogues (themes comme la coque: ShellStateColor)
 function DialogStateColor(AState: TUiState): TColor;
-// Couleur d'etat sur le fond de la coque (theme)
 function ShellStateColor(AState: TUiState): TColor;
 
 implementation
@@ -156,19 +138,16 @@ implementation
 uses
   {$IFDEF WINDOWS}Windows, UxTheme,{$ENDIF}
   {$IFDEF LCLGtk3}LazGtk3, LazGdk3, LazGObject2,{$ENDIF}
-  uFontEmbed, uRtCombo, uIcons;
+  uFontEmbed, uIcons;
 
 const
-  // icone d'en-tete de dialogue (taille logique)
   DIALOG_ICON = 20;
 
 function DialogStateColor(AState: TUiState): TColor;
 begin
-  // les dialogues suivent le theme de la coque: memes couleurs d'etat
   Result := ShellStateColor(AState);
 end;
 
-// Couleur d'etat posee sur un libelle: le theme la conserve
 function IsStateColor(AColor: TColor): Boolean;
 begin
   Result := (AColor = ShellStateColor(usOk)) or (AColor = ShellStateColor(usWarning)) or
@@ -185,8 +164,6 @@ begin
     Result := clStatusText;
   end;
 end;
-
-{ TRtPageHeader }
 
 constructor TRtPageHeader.Create(AOwner: TComponent);
 begin
@@ -271,7 +248,6 @@ begin
   Result.ShowTabs := False;
   HostWithoutBorder(Result);
   hdr.Pages := Result;
-  // l'en-tete se retrouve par le TPageControl: meme parent, Tag pointe dessus
   Result.Tag := PtrInt(hdr);
 end;
 
@@ -281,8 +257,8 @@ var
 begin
   sheet := APages.AddTabSheet;
   sheet.Caption := ACaption;
-  // Windows peint le fond d'un onglet avec son theme (blanc), sans tenir
-  // compte de sa couleur: un panneau colore porte le contenu
+  // Windows peint le fond d'un onglet avec son theme, blanc, sans regarder sa couleur:
+  // un panneau colore porte donc le contenu.
   Result := TPanel.Create(sheet);
   Result.Parent := sheet;
   Result.Align := alClient;
@@ -307,10 +283,8 @@ var
   i, bottom: Integer;
   c: TControl;
 begin
-  // alTop empile dans l'ordre des Top croissants: le nouveau controle sous
-  // ses freres deja empiles = ordre de creation. Borne par le contenu du
-  // parent: un compteur global depassait a la longue la limite SmallInt
-  // des positions Windows (WM_MOVE)
+  // Positions bornees par le contenu du parent: un compteur global finissait par depasser
+  // la limite SmallInt des positions Windows (WM_MOVE).
   if AControl.Parent = nil then
   begin
     GStackCounter := (GStackCounter + 1) mod 7000;
@@ -328,7 +302,7 @@ begin
 end;
 
 const
-  // au-dela de toute largeur de fenetre, sous la limite SmallInt de Windows
+  // Au-dela de toute largeur de fenetre, sous la limite SmallInt de Windows.
   RIGHT_ORDER_BASE = 30000;
 
 procedure ArrangeByCreation(AParent: TWinControl);
@@ -351,9 +325,8 @@ begin
       end
       else if c.Align = alRight then
       begin
-        // position provisoire (seul l'ordre compte, l'alignement la corrige),
-        // mais transmise a Windows si le handle existe (changement de theme):
-        // elle doit tenir dans un SmallInt (WM_MOVE), sinon debordement
+        // Position provisoire, l'alignement la corrige, mais Windows la recoit si le handle
+        // existe deja: elle doit tenir dans un SmallInt (WM_MOVE).
         Inc(nr, c.Width + 1);
         c.Left := RIGHT_ORDER_BASE - nr;
       end;
@@ -366,7 +339,6 @@ begin
 end;
 
 type
-  // cadre des champs de saisie de la coque, dessine par le panneau parent
   TFieldPainter = class
     procedure PanelPaint(Sender: TObject);
     procedure SplitterPaint(Sender: TObject);
@@ -378,12 +350,10 @@ var
   GFieldPainter: TFieldPainter = nil;
 
 const
-  // cadre natif d'un TPageControl sans onglets, rogne par l'hote: Windows et
-  // GTK en dessinent un; Cocoa non (NSNoTabsNoBorder), ou rogner 4 px
-  // cacherait le bord gauche de tout le contenu (signes de l'arbre, premiere
-  // colonne des listes, cases a cocher). Celui de GTK3 ne fait qu'un pixel
+  // Cadre natif d'un TPageControl sans onglets, rogne par l'hote. Windows et GTK2 en
+  // dessinent un de 4 px, GTK3 d'un seul. Cocoa aucun (NSNoTabsNoBorder): y rogner 4 px
+  // mangerait le bord gauche de tout le contenu.
   PAGE_BORDER_CLIP = {$IF DEFINED(LCLCocoa)}0{$ELSEIF DEFINED(LCLGtk3)}1{$ELSE}4{$ENDIF};
-  // marge d'une zone de texte dans son cadre arrondi
   MEMO_FRAME = 4;
 
 procedure TBorderlessHost.Resize;
@@ -439,7 +409,8 @@ end;
 
 function IsShellField(AControl: TControl): Boolean;
 begin
-  Result := (AControl.ClassType = TEdit) and (AControl.Parent is TCustomPanel) and
+  Result := ((AControl.ClassType = TEdit) or (AControl is TRtSecretEdit)) and
+    (AControl.Parent is TCustomPanel) and
     (AControl.Align in [alLeft, alRight, alClient]);
 end;
 
@@ -460,7 +431,6 @@ begin
   for i := 0 to p.ControlCount - 1 do
   begin
     c := p.Controls[i];
-    // zone de texte ou grille: meme cadre arrondi que les champs, a 4 pixels
     if (IsFramedMemo(c) or ((c is TCustomGrid) and (c.Tag = TAG_FRAMED_GRID))) and c.Visible then
     begin
       r := Classes.Rect(c.Left - MEMO_FRAME, c.Top - MEMO_FRAME, c.Left + c.Width + MEMO_FRAME,
@@ -483,8 +453,8 @@ begin
 end;
 
 {$IFDEF WINDOWS}
-// Windows 10 1809+: themes systeme sombres des listes (en-tete de colonnes,
-// barres de defilement). Sans effet sur les versions qui ne les connaissent pas.
+// Windows 10 1809+: themes systeme sombres des listes (en-tetes, barres de defilement).
+// Les versions plus anciennes ignorent la demande sans broncher.
 procedure ApplyNativeDarkMode(AControl: TWinControl);
 const
   LVM_GETHEADER = $1000 + 31;
@@ -538,7 +508,9 @@ begin
   SyncNativeAppearance;
 end;
 {$ELSEIF DEFINED(LCLGtk3)}
-// fond des menus, pas de transition sur les entry
+// GTK3. Menus: seuls les items sont dessines par l'application, les marges du menu natif
+// gardaient le fond clair du theme systeme. Champs: le theme anime le changement de
+// fond, et un champ recolore apres creation flashait le fond clair du systeme.
 var
   screen: PGdkScreen;
   rgb: LongInt;
@@ -565,11 +537,9 @@ begin
 end;
 {$ENDIF}
 
-// Separateur: sans OnPaint, la LCL dessine le motif clair du systeme
-// Tout le conteneur du separateur, enfants compris, est a redessiner: les
-// controles dessines par l'application (arbre, en-tetes d'onglets, grille)
-// ne repeignent pas d'eux-memes la zone gagnee pendant un glissement, d'ou
-// des restes de l'ancienne disposition
+// Sans OnPaint, la LCL dessine le motif clair du systeme sur le separateur. Et les
+// controles dessines a la main ne repeignent pas la zone gagnee pendant un glissement:
+// tout le conteneur est redessine, sinon l'ancienne disposition traine a l'ecran.
 procedure RepaintContainer(AControl: TWinControl);
 {$IFNDEF WINDOWS}
 var
@@ -592,8 +562,6 @@ end;
 procedure TFieldPainter.SplitterCanResize(Sender: TObject; var NewSize: Integer;
   var Accept: Boolean);
 begin
-  // appele juste avant chaque redimensionnement du glissement: le dessin
-  // suivant se fait sur la nouvelle disposition, zone entiere effacee
   RepaintContainer(TSplitter(Sender).Parent);
 end;
 
@@ -637,8 +605,7 @@ begin
   ASplitter.Invalidate;
 end;
 
-// Champ de la coque: sans bordure native (blanche sur fond sombre), texte
-// centre verticalement, cadre dessine par le panneau
+// Champ sans bordure native (blanche sur fond sombre): le panneau dessine le cadre.
 procedure StyleShellField(AEdit: TEdit);
 var
   p: TCustomPanel;
@@ -658,7 +625,8 @@ begin
   AEdit.BorderSpacing.Top := top;
   AEdit.BorderSpacing.Bottom := rowH - eh - top;
   {$IFDEF LCLGtk3}
-  // GTK3: hauteur minimale du theme
+  // GTK3 impose a l'entry la hauteur minimale de son theme, plus haute que le cadre:
+  // seule une contrainte la ramene a la hauteur du texte.
   AEdit.Constraints.MaxHeight := eh;
   {$ENDIF}
   if GFieldPainter = nil then
@@ -667,11 +635,6 @@ begin
   p.Invalidate;
 end;
 
-// Controle aligne a gauche ou a droite dans une ligne: centre verticalement
-// Zone de texte (TMemo): police et taille de l'interface (pas celles de
-// l'editeur LDIF), sans bordure native (claire sur fond sombre): le panneau
-// parent dessine un cadre arrondi comme celui des champs. Un parent qui
-// n'est pas un panneau garde la bordure native, au theme sombre du systeme.
 procedure StyleMemo(AMemo: TCustomMemo);
 var
   p: TPanel;
@@ -685,8 +648,6 @@ begin
     m := TMethod(p.OnPaint);
     if GFieldPainter = nil then
       GFieldPainter := TFieldPainter.Create;
-    // un panneau qui dessine deja autre chose garde son dessin et le memo
-    // sa bordure
     if (m.Code = nil) or (m.Data = Pointer(GFieldPainter)) then
     begin
       if AMemo.BorderStyle <> bsNone then AMemo.BorderStyle := bsNone;
@@ -697,14 +658,10 @@ begin
     end;
   end;
   {$IFDEF WINDOWS}
-  // barres de defilement (et bordure native restante) au theme du systeme
   if AMemo.HandleAllocated then ApplyNativeDarkMode(AMemo);
   {$ENDIF}
 end;
 
-// Grille (liste) d'un dialogue posee dans un panneau: sans bordure, dans le
-// cadre arrondi du theme, comme les zones de texte. Les vues principales
-// (onglets) gardent leurs grilles bord a bord.
 procedure StyleGrid(AGrid: TCustomGrid);
 var
   p: TPanel;
@@ -771,6 +728,12 @@ begin
   Result.WordWrap := AAlign in [alTop, alBottom, alClient];
 end;
 
+function MakeDataLabel(AParent: TWinControl; const ACaption: string; AAlign: TAlign): TLabel;
+begin
+  Result := MakeLabel(AParent, ACaption, AAlign);
+  Result.ShowAccelChar := False;
+end;
+
 function MakeEdit(AParent: TWinControl; AAlign: TAlign): TEdit;
 begin
   Result := TEdit.Create(AParent);
@@ -790,16 +753,15 @@ begin
   Result.BorderSpacing.Around := 3;
 end;
 
-function MakeCombo(AParent: TWinControl; const AItems: array of string; AAlign: TAlign): TComboBox;
+function MakeCombo(AParent: TWinControl; const AItems: array of string; AAlign: TAlign): TRtComboBox;
 var
   i: Integer;
 begin
-  Result := TComboBox.Create(AParent);
+  Result := TRtComboBox.Create(AParent);
   Result.Parent := AParent;
   if AAlign = alTop then StackTop(Result);
   Result.Align := AAlign;
-  Result.Style := csDropDownList;
-  Result.BorderSpacing.Around := 2;
+  Result.BorderSpacing.Around := 3;
   for i := 0 to High(AItems) do
     Result.Items.Add(AItems[i]);
   if Result.Items.Count > 0 then
@@ -848,6 +810,72 @@ begin
   lbl.BorderSpacing.Left := 6;
 end;
 
+function MakeEditRow(AParent: TWinControl; const ACaption: string; ALabelWidth: Integer): TEdit;
+begin
+  Result := MakeEdit(MakeFieldRow(AParent, ACaption, ALabelWidth), alClient);
+end;
+
+function MakeSecretRow(AParent: TWinControl; const ACaption: string; ALabelWidth: Integer): TRtSecretEdit;
+var
+  row: TPanel;
+begin
+  row := MakeFieldRow(AParent, ACaption, ALabelWidth);
+  Result := TRtSecretEdit.Create(row);
+  Result.Parent := row;
+  Result.Align := alClient;
+  Result.BorderSpacing.Around := 2;
+end;
+
+function MakeComboRow(AParent: TWinControl; const ACaption: string; const AItems: array of string;
+  ALabelWidth: Integer): TRtComboBox;
+begin
+  Result := MakeCombo(MakeFieldRow(AParent, ACaption, ALabelWidth), AItems, alClient);
+end;
+
+function MakeSpinRow(AParent: TWinControl; const ACaption: string; AMin, AMax, AValue: Integer;
+  ALabelWidth: Integer): TSpinEdit;
+var
+  row: TPanel;
+begin
+  row := MakeFieldRow(AParent, ACaption, ALabelWidth);
+  Result := TSpinEdit.Create(row);
+  Result.Parent := row;
+  Result.Align := alLeft;
+  Result.Width := 90;
+  Result.BorderSpacing.Around := 3;
+  Result.Constraints.MaxHeight := FontTextHeight(AParent.Font) + 12;
+  Result.MinValue := AMin;
+  Result.MaxValue := AMax;
+  Result.Value := AValue;
+end;
+
+constructor TRtScrollBox.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  BorderStyle := bsNone;
+  Color := clAppBg;
+end;
+
+procedure TRtScrollBox.CreateWnd;
+begin
+  inherited CreateWnd;
+  ApplyNativeDarkMode(Self);
+end;
+
+function MakeScrollArea(AParent: TWinControl; out AContent: TPanel; AAlign: TAlign): TRtScrollBox;
+begin
+  Result := TRtScrollBox.Create(AParent);
+  Result.Parent := AParent;
+  Result.Align := AAlign;
+  Result.HorzScrollBar.Visible := False;
+  Result.VertScrollBar.Tracking := True;
+  // Un seul enfant a hauteur automatique, la boite ne fait que defiler. Des dizaines de
+  // lignes posees directement dedans font boucler Cocoa (InvalidatePreferredSize loop
+  // detected), qui recalcule la plage de defilement jusqu'a la fin des temps.
+  AContent := MakePanel(Result, alTop);
+  AContent.AutoSize := True;
+end;
+
 function RowLabel(ARow: TWinControl): TLabel;
 var
   i: Integer;
@@ -891,7 +919,6 @@ var
         w := bmp.Canvas.TextWidth(lbl.Caption) + lbl.BorderSpacing.Left + 12;
         if w > maxW then
         begin
-          // libelle trop long: deux lignes, jamais un texte coupe
           lbl.WordWrap := True;
           lines := (w + maxW - 1) div maxW;
           row.Height := lines * (bmp.Canvas.TextHeight('Ag') + 2) + 8;
@@ -930,15 +957,14 @@ var
   wc: TWinControl;
 begin
   if AControl = nil then Exit;
-  // liste deroulante native: fond clair impose par Windows; la variante
-  // editable en lecture seule respecte les couleurs du theme
+  // Liste deroulante native: Windows impose son fond clair. La variante editable en
+  // lecture seule, elle, respecte les couleurs du theme.
   if (AControl is TComboBox) and (TComboBox(AControl).Style = csDropDownList) then
   begin
     TComboBox(AControl).Style := csDropDown;
     TComboBox(AControl).ReadOnly := True;
   end;
   if AControl is TCustomMemo then
-    // zones de texte: police de l'interface, cadre du theme
     StyleMemo(TCustomMemo(AControl))
   else if AControl.Tag <> TAG_KEEP_FONT then
   begin
@@ -947,7 +973,8 @@ begin
     AControl.Font.Size := RSUiFontSize;
   end;
   {$IFDEF LCLGtk3}
-  // GTK3: le bouton natif garde le fond systeme
+  // GTK3 applique Font.Color au bouton natif mais lui laisse le fond du theme systeme:
+  // le texte clair herite du dialogue y deviendrait invisible.
   if AControl is TCustomButton then
     AControl.Font.Color := clDefault;
   {$ENDIF}
@@ -966,10 +993,9 @@ begin
       CenterInRow(AControl, AControl.Height)
     else if AControl is TCustomButton then
     begin
-      // Around s'ajoute aux marges haute et basse posees par CenterInRow:
-      // il ecrasait le bouton de 2 x Around. Garde a gauche et a droite
-      // seulement (espacement entre boutons); 0 ensuite: sans effet au
-      // passage suivant du theme
+      // Around s'ajoute aux marges haute et basse posees par CenterInRow et ecrasait le
+      // bouton de 2 x Around: reporte a gauche et a droite, puis remis a 0 pour que le
+      // passage suivant du theme ne recommence pas.
       if AControl.BorderSpacing.Around > 0 then
       begin
         AControl.BorderSpacing.Left := AControl.BorderSpacing.Left + AControl.BorderSpacing.Around;
@@ -986,8 +1012,8 @@ begin
     end;
   end;
   {$IFDEF WINDOWS}
-  // cases a cocher et listes deroulantes themees par Windows ignorent les
-  // couleurs: style classique pour que le texte reste lisible sur fond sombre
+  // Cases a cocher et listes deroulantes themees par Windows ignorent les couleurs: style
+  // classique, pour que le texte reste lisible sur fond sombre.
   if ((AControl is TCustomCheckBox) or (AControl is TRadioButton) or
       (AControl is TCustomComboBox)) and TWinControl(AControl).HandleAllocated then
     SetWindowTheme(TWinControl(AControl).Handle, ' ', ' ');
@@ -1011,12 +1037,11 @@ begin
   begin
     AControl.Color := clSideBg;
     AControl.Font.Color := clSideText;
-    // bordure native claire sur fond sombre
     if AControl is TCustomListView then TCustomListView(AControl).BorderStyle := bsNone
     else if AControl is TCustomTreeView then TCustomTreeView(AControl).BorderStyle := bsNone
     else TCustomListBox(AControl).BorderStyle := bsNone;
-    // arbre: le dessin theme de Windows ignore Font.Color (texte noir sur
-    // fond sombre); dessin LCL aux couleurs du theme, selection comprise
+    // Le dessin theme de Windows ignore Font.Color dans l'arbre (texte noir sur fond
+    // sombre): dessin LCL aux couleurs du theme, selection comprise.
     if AControl is TCustomTreeView then
       with TCustomTreeView(AControl) do
       begin
@@ -1031,7 +1056,6 @@ begin
       end;
     if AControl is TTreeView then
       FitTreeIndent(TTreeView(AControl));
-    // arbres: rendu de RottenSSHrimp (signes plus/moins, pas le theme Explorer)
     {$IFDEF WINDOWS}
     if not (AControl is TCustomTreeView) then
       ApplyNativeDarkMode(TWinControl(AControl));
@@ -1042,7 +1066,14 @@ begin
     AControl.Color := clAppBg;
     AControl.Font.Color := clAppFg;
     if AControl is TStringGrid then
-      TStringGrid(AControl).FixedColor := clSideBg;
+      with TStringGrid(AControl) do
+      begin
+        FixedColor := clSideBg;
+        GridLineColor := clBorder;
+        FixedGridLineColor := clBorder;
+        SelectedColor := clSideSel;
+        DefaultRowHeight := FontTextHeight(Font) + 8;
+      end;
     StyleGrid(TCustomGrid(AControl));
     {$IFDEF WINDOWS}
     ApplyNativeDarkMode(TWinControl(AControl));
@@ -1052,7 +1083,6 @@ begin
     (AControl is TRtCheckBox) or
     (AControl is TRadioButton) then
   begin
-    // un libelle d'etat (erreur, avertissement, note) garde sa couleur
     if not IsStateColor(AControl.Font.Color) then
       AControl.Font.Color := clAppFg;
   end
@@ -1060,6 +1090,15 @@ begin
   begin
     if not TCustomPanel(AControl).ParentColor then
       AControl.Color := clAppBg;
+  end
+  else if AControl is TScrollBox then
+  begin
+    if not TScrollBox(AControl).ParentColor then
+      AControl.Color := clAppBg;
+    {$IFDEF WINDOWS}
+    if TScrollBox(AControl).HandleAllocated then
+      ApplyNativeDarkMode(TScrollBox(AControl));
+    {$ENDIF}
   end;
   if AControl is TWinControl then
   begin
@@ -1069,13 +1108,10 @@ begin
   end;
 end;
 
-{ TRtDialog }
-
 constructor TRtDialog.CreateDialog(AOwner: TComponent; const ACaption: string;
   AWidth, AHeight: Integer);
 begin
   inherited CreateNew(AOwner);
-  // tous les dialogues suivent le theme de la coque (clair ou sombre)
   FShellThemed := True;
   Caption := ACaption;
   BorderStyle := bsSizeable;
@@ -1125,7 +1161,7 @@ begin
     hdrIcon.Align := alLeft;
     hdrIcon.BorderSpacing.Left := 10;
     FHeaderIcon := hdrIcon;
-    // l'icone precede le libelle: meme ordre que la creation
+    // Libelle realigne pour passer derriere l'icone, creee apres lui.
     FHeaderLabel.Align := alNone;
     FHeaderLabel.Align := alClient;
   end;
@@ -1136,7 +1172,6 @@ begin
   else
     FHeader.Height := 30;
   RefreshHeader;
-  // le bandeau prend sa place sur la fenetre, pas sur le contenu
   Height := Height + FHeader.Height - before;
 end;
 
@@ -1150,8 +1185,6 @@ begin
   if FHeader.Visible then Result := FHeaderLabel.Caption else Result := '';
 end;
 
-// Bandeau: serveur cible (a toujours montrer), ou titre du dialogue quand
-// seule l'icone le demande
 procedure TRtDialog.RefreshHeader;
 begin
   FHeader.Visible := (FTarget <> '') or (FHeaderIcon <> nil);
@@ -1173,30 +1206,20 @@ begin
   Result.Default := ADefault;
   Result.Cancel := ACancel;
   Result.Align := alRight;
-  // largeur ajustee au libelle dans la police reelle (theme, echelle): un
-  // libelle long n'est jamais tronque; 100 px au moins pour des boutons
-  // homogenes
   Result.AutoSize := True;
   Result.Constraints.MinWidth := 100;
   Result.BorderSpacing.Around := 5;
-  // alRight empile de droite a gauche: le premier bouton ajoute reste a droite
+  // alRight range par Left decroissant: le premier bouton ajoute reste a droite.
   Result.Left := 10000 - FButtons.ControlCount * 10;
 end;
 
 procedure TRtDialog.ApplyTheme;
 begin
-  // dialogues: controles du systeme (voir en-tete), sauf ShellThemed; seules
-  // les zones d'edition (MakeMemo) gardent les couleurs de l'editeur
   if FShellThemed then ApplyShellColors;
   ArrangeByCreation(Self);
-  // libelles a la largeur de leur texte dans la police choisie, champs alignes
   FitFieldLabels(FBody, (Width * 55) div 100);
 end;
 
-// Controles alTop replaces dans leur ordre de creation. Le theme agrandit
-// les lignes de champ (StyleShellField): la LCL range alors la ligne
-// redimensionnee d'apres son Top d'origine (StackTop), apres ses voisines
-// deja placees, et l'ordre voulu se perd
 procedure StackByCreation(AParent: TWinControl);
 var
   i, y: Integer;
@@ -1228,7 +1251,6 @@ begin
   ThemeControlTree(FBody);
   ThemeControlTree(FButtons);
   StackByCreation(FBody);
-  // bandeau du serveur cible: celui des onglets de la coque
   FHeader.Color := clTabStrip;
   FHeaderLabel.Font.Color := clTabActiveText;
   FBadgeLabel.Font.Color := clAccent;
@@ -1247,14 +1269,12 @@ begin
     if (not c.Visible) or (c.Align <> alTop) then Continue;
     Inc(need, c.Height + c.BorderSpacing.Top + c.BorderSpacing.Bottom + 2 * c.BorderSpacing.Around);
   end;
-  // le reste de la fenetre (bandeau, boutons, marges) garde sa taille
   h := ClientHeight - FBody.Height + need + 4;
   maxH := Screen.WorkAreaHeight - (Height - ClientHeight) - 20;
   if h > maxH then h := maxH;
   if h = ClientHeight then Exit;
   oldH := Height;
   ClientHeight := h;
-  // reste centree sur sa position d'origine
   if Visible then Top := Top - (Height - oldH) div 2;
   if Top < Screen.WorkAreaTop then Top := Screen.WorkAreaTop;
 end;
@@ -1262,11 +1282,9 @@ end;
 procedure TRtDialog.DoShow;
 begin
   inherited DoShow;
-  // hauteurs des libelles replies connues une fois les handles crees
   if FFitOnShow then FitHeightToContent;
-  // les controles natifs n'ont leur handle qu'a l'affichage: le style
-  // classique des cases a cocher (texte lisible sur fond sombre) et le mode
-  // sombre des listes ne s'appliquent qu'a partir de la
+  // Les controles natifs n'ont leur handle qu'a l'affichage: style classique des cases
+  // et mode sombre des listes ne prennent qu'a partir d'ici.
   if FShellThemed then ApplyShellColors;
 end;
 

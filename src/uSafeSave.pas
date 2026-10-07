@@ -4,13 +4,13 @@ unit uSafeSave;
 
 {$mode objfpc}{$H+}
 
-// Ecriture de fichiers sans fenetre de troncature, sans TOCTOU, sans casser
-// les liens. Repris de RottenSSHrimp (issu de RottenText, meme auteur).
+// Ecriture de fichiers sans fenetre de troncature, sans TOCTOU, sans casser les liens.
+// Un fichier a moitie ecrit est pire qu'un fichier absent: il a l'air vivant.
 
 interface
 
 uses
-  Classes, SysUtils{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}; // Unix: fpfsync
+  Classes, SysUtils{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF};
 
 type
   TOwnedHandleStream = class(THandleStream)
@@ -19,72 +19,47 @@ type
   end;
 
 function HasHardLinks(const APath: string): Boolean;
-// Couple volume/inode: change a tout rename, meme a taille et date identiques.
+// Couple volume/inode: change a chaque rename, meme a taille et date identiques.
 function FileIdentity(const APath: string; out ADev, AIno: Int64): Boolean;
-// echoue AVANT toute ecriture plutot que de rendre un chemin encore lie:
-// l'appelant renommerait par-dessus le LIEN
+// Echoue AVANT toute ecriture plutot que de rendre un chemin encore lie: l'appelant
+// renommerait par-dessus le LIEN, pas par-dessus sa cible.
 function ResolveLink(const APath: string): string;
 function CreateTempIn(const ADest: string; out ATmpName: string): TOwnedHandleStream;
-// Contenu rendu durable AVANT le rename: fsync sous Unix, FlushFileBuffers
-// sous Windows. False = le disque n'a pas confirme, la sauvegarde ne l'est pas.
+// Contenu rendu durable AVANT le rename (fsync, FlushFileBuffers). False: le disque n'a
+// rien confirme, la sauvegarde non plus.
 function FlushToDisk(AHandle: THandle): Boolean;
 function ReplaceByRename(const ATmp, ADest: string): Boolean;
-// Variantes « privees »: 0600/0700 quel que soit l'umask; no-op sous Windows.
+// Variantes privees: 0600/0700 quel que soit l'umask. Sans effet sous Windows.
 function ReplaceByRenamePrivate(const ATmp, ADest: string): Boolean; overload;
-// ADirSynced: le dossier parent a ete synchronise apres le rename (Unix);
-// False = le rename est fait mais sa persistance apres coupure n'est pas
-// confirmee par le disque. Toujours True sous Windows (aucun equivalent
-// accessible sans privilege; donnees deja confirmees par FlushToDisk).
+// ADirSynced False: le rename est fait, mais rien ne dit qu'il survivra a une coupure.
+// Toujours True sous Windows, faute d'equivalent accessible sans privilege.
 function ReplaceByRenamePrivate(const ATmp, ADest: string; out ADirSynced: Boolean): Boolean; overload;
-// Chemin physique complet d'un fichier existant ou a creer: TOUS les
-// composants sont resolus (liens symboliques, jonctions, noms courts), pas
-// seulement le dernier; deux chemins du meme fichier donnent la meme chaine.
-// Le dossier parent doit exister. EStreamError si l'identite ne peut pas
-// etre etablie (lien insoluble, boucle, dossier absent ou illisible).
+// Chemin physique ou TOUS les composants sont resolus (liens, jonctions, noms courts),
+// pas seulement le dernier: deux chemins du meme fichier donnent la meme chaine.
+// EStreamError si l'identite reste douteuse; un doute ici finit en ecrasement ailleurs.
 function CanonicalFilePath(const APath: string): string;
 procedure MakePrivateFile(const APath: string);
 procedure MakePrivateDir(const APath: string);
-// Fichier temporaire prive cree exclusivement (jamais une cible existante),
-// lecture/ecriture, sans partage; supprime seul a la fermeture (Windows:
-// DELETE_ON_CLOSE, Unix: unlink immediat). THandle(-1) si le nom existe.
+// Temporaire prive cree en exclusif, jamais sur une cible existante, et qui disparait
+// seul a la fermeture (DELETE_ON_CLOSE, unlink immediat sous Unix).
 function CreatePrivateTempRW(const AName: string): THandle;
-// Chemin physique (liens, jonctions et points de montage resolus) d'un
-// fichier ou dossier existant; '' si indisponible
 function PhysicalPath(const APath: string): string;
-// Chemin physique du fichier reellement ouvert (Windows); '' ailleurs
 function HandleFinalPath(AHandle: THandle): string;
-// Vrai si le handle designe un fichier ordinaire (ni dossier, ni lien, ni
-// peripherique)
 function HandleIsRegularFile(AHandle: THandle): Boolean;
-// Ouverture en lecture d'un fichier ORDINAIRE sans blocage a l'ouverture
-// (R18). Unix: open O_RDONLY or O_NONBLOCK (un FIFO sans ecrivain ne bloque
-// pas), fstat sur le descripteur reellement ouvert (meme propriete anti-
-// TOCTOU que les controles par handle), refus si ce n'est pas un fichier
-// ordinaire, puis retrait de O_NONBLOCK pour des lectures normales; POSIX
-// n'a pas d'equivalent impose a fmShareDenyWrite (partage consultatif).
-// Windows: TFileStream fmOpenRead or fmShareDenyWrite, inchange.
-// ANotRegular = True: le chemin s'ouvre mais ne designe pas un fichier
-// ordinaire; le resultat est nil et rien ne reste ouvert. Un echec
-// d'ouverture leve une exception, comme TFileStream.Create.
 function OpenRegularFileRead(const APath: string; out ANotRegular: Boolean): THandleStream;
-// Identite volume/inode du handle (Unix); False ailleurs
 function HandleIdentity(AHandle: THandle; out ADev, AIno: Int64): Boolean;
 procedure SavePrivateStream(const APath: string; ASrc: TStream);
-// Meme remplacement sur, le contenu etant produit par AFill directement dans
-// le fichier temporaire: aucune copie intermediaire en memoire (G08). Une
-// exception levee par AFill abandonne l'ecriture, le temporaire est efface
-// et le fichier precedent reste en place.
+// Le contenu est produit directement dans le temporaire, sans copie en memoire. Une
+// exception dans AFill abandonne tout: temporaire efface, ancien fichier intact.
 type
   TStreamFill = procedure(ADest: TStream) of object;
 procedure SavePrivateFill(const APath: string; AFill: TStreamFill);
-// WriteBuffer prend un Count Longint: au-dela de 2 Gio la taille wrappe en
-// silence ({$R-}) = copie tronquee
+// WriteBuffer prend un Count Longint: au-dela de 2 Gio la taille boucle en silence avec
+// {$R-}, et la copie sort tronquee sans que personne ne s'en plaigne.
 procedure WriteAllBuf(ASt: TStream; const AData: string);
-// Lecture complete d'un flux borne: la taille est consultee UNE fois, ce
-// nombre exact d'octets est lu dans un tampon de cette capacite, puis un
-// octet de plus est tente. Un fichier qui a grandi entre-temps rend False
-// (l'instantane serait incomplet et la lecture ne deborde jamais le
-// tampon), un fichier raccourci leve EReadError. False au-dela de AMaxBytes.
+// Taille lue UNE fois, ce nombre exact d'octets lu, puis un octet de plus tente. Un
+// fichier qui grandit en route rend False, un fichier qui raccourcit leve EReadError:
+// le tampon ne deborde jamais, quoi que fasse l'autre cote.
 function ReadWholeStream(ASt: TStream; AMaxBytes: Int64; out AData: RawByteString): Boolean;
 
 implementation
@@ -101,7 +76,6 @@ begin
   SetLength(AData, n);
   if n > 0 then ASt.ReadBuffer(AData[1], LongInt(n));
   probe := 0;
-  // 0 = fin atteinte comme annonce; >0 = le fichier a grandi; <0 = erreur
   if ASt.Read(probe, 1) <> 0 then
   begin
     AData := '';
@@ -145,7 +119,7 @@ const
   OPEN_EXISTING_W   = 3;
   FILE_ATTR_NORMAL  = $80;
   FILE_ATTR_REPARSE = $400;
-  SHARE_ALL         = 7; // read + write + delete
+  SHARE_ALL         = 7;
   REPLACEFILE_IGNORE_MERGE_ERRORS = 2;
   MOVEFILE_REPLACE_EXISTING = 1;
   MOVEFILE_COPY_ALLOWED     = 2;
@@ -182,7 +156,7 @@ var
   info: TByHandleInfo;
 begin
   Result := False;
-  // sans FLAG_OPEN_REPARSE_POINT, CreateFileW suit les symlinks: on teste la cible
+  // Sans FLAG_OPEN_REPARSE_POINT, CreateFileW suit les liens: c'est la cible qu'on teste.
   h := CreateFileW(PWideChar(UTF8Decode(APath)), 0, SHARE_ALL, nil,
     OPEN_EXISTING_W, 0, 0);
   if h = THandle(-1) then Exit;
@@ -219,12 +193,12 @@ var
   s: UnicodeString;
 begin
   Result := APath;
-  // UTF8Decode explicite: ne pas dependre de DefaultSystemCodePage
+  // UTF8Decode explicite: ne pas dependre de DefaultSystemCodePage.
   attrs := GetFileAttributesW(PWideChar(UTF8Decode(APath)));
   if (attrs = $FFFFFFFF) or ((attrs and FILE_ATTR_REPARSE) = 0) then
-    Exit; // inexistant ou pas un lien: tel quel
+    Exit;
   h := CreateFileW(PWideChar(UTF8Decode(APath)), 0, SHARE_ALL, nil,
-    OPEN_EXISTING_W, 0, 0); // suit le lien
+    OPEN_EXISTING_W, 0, 0);
   if h = THandle(-1) then
     raise EStreamError.CreateFmt('Cannot resolve link %s', [APath]);
   n := GetFinalPathNameByHandleW(h, @buf[0], Length(buf), 0);
@@ -232,7 +206,7 @@ begin
   if (n = 0) or (n >= LongWord(Length(buf))) then
     raise EStreamError.CreateFmt('Cannot resolve link %s', [APath]);
   SetString(s, PWideChar(@buf[0]), n);
-  // GetFinalPathNameByHandle prefixe en \\?\ (ou \\?\UNC\ pour le reseau)
+  // GetFinalPathNameByHandle prefixe en \\?\ (ou \\?\UNC\ pour le reseau).
   if Copy(s, 1, 8) = '\\?\UNC\' then
     s := '\\' + Copy(s, 9, MaxInt)
   else if Copy(s, 1, 4) = '\\?\' then
@@ -275,7 +249,7 @@ var
   h: THandle;
 begin
   Result := '';
-  // BACKUP_SEMANTICS: les dossiers s'ouvrent aussi; les liens sont suivis
+  // BACKUP_SEMANTICS, sinon CreateFileW refuse d'ouvrir un dossier. Les liens sont suivis.
   h := CreateFileW(PWideChar(UTF8Decode(APath)), 0, SHARE_ALL, nil,
     OPEN_EXISTING_W, FILE_FLAG_BACKUP_SEMANTICS_W, 0);
   if h = THandle(-1) then Exit;
@@ -288,15 +262,13 @@ var
   p, dir: string;
 begin
   p := ExpandFileName(APath);
-  // fichier existant: GetFinalPathNameByHandle (FILE_NAME_NORMALIZED) donne
-  // le chemin du fichier reellement ouvert, jonctions, liens, lecteurs
-  // substitues et noms courts 8.3 compris
+  // Fichier existant: GetFinalPathNameByHandle rend le chemin du fichier reellement ouvert,
+  // jonctions, liens, lecteurs substitues et noms courts 8.3 compris.
   Result := PhysicalPath(p);
   if Result <> '' then Exit;
-  // un nom qui existe sans pouvoir s'ouvrir (lien casse): identite inconnue
+  // Un nom qui existe sans pouvoir s'ouvrir (lien casse): identite inconnue, on refuse.
   if GetFileAttributesW(PWideChar(UTF8Decode(p))) <> $FFFFFFFF then
     raise EStreamError.CreateFmt('Cannot resolve %s', [APath]);
-  // fichier a creer: dossier physique + nom
   dir := PhysicalPath(ExtractFileDir(p));
   if dir = '' then
     raise EStreamError.CreateFmt('Cannot resolve the folder of %s', [APath]);
@@ -334,13 +306,13 @@ end;
 
 function ReplaceByRename(const ATmp, ADest: string): Boolean;
 begin
-  // ReplaceFileW preserve attributs/ACL de la cible mais exige qu'elle existe
+  // ReplaceFileW preserve attributs et ACL de la cible, mais exige qu'elle existe.
   if FileExists(ADest) then
     if ReplaceFileW(PWideChar(UTF8Decode(ADest)), PWideChar(UTF8Decode(ATmp)),
         nil, REPLACEFILE_IGNORE_MERGE_ERRORS, nil, nil) then
       Exit(True);
-  // jamais MOVEFILE_COPY_ALLOWED: une copie n'est pas atomique, et le
-  // temporaire nait dans le repertoire de la cible (meme volume)
+  // Jamais MOVEFILE_COPY_ALLOWED: une copie n'est pas atomique. Le temporaire nait a cote
+  // de la cible, donc sur le meme volume.
   Result := MoveFileExW(PWideChar(UTF8Decode(ATmp)),
     PWideChar(UTF8Decode(ADest)),
     MOVEFILE_REPLACE_EXISTING);
@@ -352,7 +324,7 @@ function HasHardLinks(const APath: string): Boolean;
 var
   st: Stat;
 begin
-  // fpStat suit les symlinks: on teste la cible reelle
+  // fpStat suit les liens: c'est la cible reelle qu'on teste.
   Result := (fpStat(PChar(APath), st) = 0) and (st.st_nlink > 1);
 end;
 
@@ -377,17 +349,17 @@ var
   i: Integer;
 begin
   Result := APath;
-  for i := 1 to 8 do // chaines de liens bornees
+  for i := 1 to 8 do // boucle de liens bornee
   begin
     if fpLStat(PChar(Result), st) <> 0 then
-      Exit; // n'existe pas (encore): cible de creation legitime
+      Exit;
     if not fpS_ISLNK(st.st_mode) then
       Exit;
     lnk := fpReadLink(Result);
     if lnk = '' then
       raise EStreamError.CreateFmt('Cannot resolve link %s', [Result]);
     if lnk[1] <> '/' then
-      lnk := ExpandFileName(ExtractFilePath(Result) + lnk); // lien relatif
+      lnk := ExpandFileName(ExtractFilePath(Result) + lnk);
     Result := lnk;
   end;
   if (fpLStat(PChar(Result), st) = 0) and fpS_ISLNK(st.st_mode) then
@@ -410,8 +382,8 @@ var
 begin
   fd := FpOpen(PChar(AName), O_RDWR or O_CREAT or O_EXCL, &600);
   if fd < 0 then Exit(THandle(-1));
-  // retire du nommage aussitot: aucune autre instance ne peut l'ouvrir ni
-  // le supprimer, et un crash ne laisse aucun orphelin
+  // Retire du nommage aussitot: aucune autre instance ne peut l'ouvrir ni le supprimer,
+  // et un crash ne laisse pas d'orphelin a ramasser.
   FpUnlink(PChar(AName));
   Result := THandle(fd);
 end;
@@ -422,17 +394,14 @@ begin
 end;
 
 const
-  // PATH_MAX vaut 4096 sous Linux, 1024 sous macOS et les BSD: le tampon
-  // couvre les deux
+  // PATH_MAX vaut 4096 sous Linux et 1024 sous macOS: realpath ecrit sans connaitre la
+  // taille du tampon, il couvre donc large.
   REALPATH_BUF = 8192;
-  // SYMLOOP_MAX POSIX minimal (_POSIX_SYMLOOP_MAX = 8) largement couvert
   CANON_MAX_LINKS = 40;
 
 function c_realpath(APath: PChar; AResolved: PChar): PChar; cdecl;
   external 'c' name 'realpath';
 
-// realpath(3): chemin absolu sans '.', '..' ni lien symbolique, pour un nom
-// EXISTANT; '' sinon
 function RealPathOf(const APath: string): string;
 var
   buf: array[0..REALPATH_BUF - 1] of Char;
@@ -451,20 +420,18 @@ begin
   p := ExpandFileName(APath);
   for i := 1 to CANON_MAX_LINKS do
   begin
-    // nom existant: realpath resout chaque composant, dernier compris
     Result := RealPathOf(p);
     if Result <> '' then Exit;
-    // nom inexistant ou lien casse: le dossier doit se resoudre
     dir := RealPathOf(ExtractFileDir(p));
     if dir = '' then
       raise EStreamError.CreateFmt('Cannot resolve the folder of %s', [APath]);
     Result := IncludeTrailingPathDelimiter(dir) + ExtractFileName(p);
     if fpLStat(PChar(Result), st) <> 0 then
-      Exit; // n'existe pas encore: cible de creation legitime
+      Exit;
     if not fpS_ISLNK(st.st_mode) then
       raise EStreamError.CreateFmt('Cannot resolve %s', [APath]);
-    // lien casse: sa cible, relative au dossier PHYSIQUE du lien (pas de
-    // reduction lexicale de '..', realpath la traitera au tour suivant)
+    // Lien casse: sa cible, relative au dossier PHYSIQUE du lien. Aucune reduction lexicale
+    // de '..', realpath s'en charge au tour suivant.
     lnk := fpReadLink(Result);
     if lnk = '' then
       raise EStreamError.CreateFmt('Cannot resolve link %s', [Result]);
@@ -481,9 +448,9 @@ var
   i: Integer;
   cur: string;
 begin
-  // chaque prefixe est resolu a son tour: un lien intermediaire compte aussi
-  // (variable intermediaire: FPC 3.2.4/Darwin refuse le helper sur le
-  // resultat direct d'ExpandFileName)
+  // Chaque prefixe est resolu a son tour: un lien intermediaire compte aussi. La variable
+  // intermediaire existe parce que FPC 3.2.4 sous Darwin refuse le helper sur le resultat
+  // direct d'ExpandFileName.
   cur := ExpandFileName(APath);
   parts := cur.Split(['/']);
   cur := '';
@@ -522,10 +489,9 @@ begin
   end;
 end;
 
-// le rename est durable seulement une fois l'entree de repertoire synchro-
-// nisee: sans fsync du repertoire parent, un arret brutal peut faire
-// reapparaitre l'ancien nom (SEC-03). False = ouverture du dossier ou fsync
-// refuse: la persistance n'est pas confirmee, l'appelant le dit
+// Un rename n'est durable qu'une fois le repertoire parent synchronise: sans ca, un arret
+// brutal peut ressusciter l'ancien nom. False: persistance non confirmee, l'appelant
+// doit le dire.
 function SyncParentDir(const APath: string): Boolean;
 var
   fd: cint;
@@ -542,22 +508,23 @@ var
   hasMeta: Boolean;
   um: TMode;
 begin
-  hasMeta := fpStat(PChar(ADest), st) = 0; // metadonnees de l'original
-  Result := RenameFile(ATmp, ADest);       // rename POSIX = atomique
+  hasMeta := fpStat(PChar(ADest), st) = 0;
+  Result := RenameFile(ATmp, ADest);
   if not Result then Exit;
-  // chemin non prive (polices embarquees): best effort, sans verdict
+  // Chemin non prive (polices embarquees): au mieux, sans verdict.
   SyncParentDir(ADest);
   if hasMeta then
   begin
-    // chown PUIS chmod: un chown efface setuid/setgid sur la plupart des systemes
+    // chown PUIS chmod: un chown efface setuid/setgid sur la plupart des systemes.
     fpChown(PChar(ADest), st.st_uid, st.st_gid);
     fpChmod(PChar(ADest), st.st_mode and $0FFF);
   end
   else
   begin
-    // fichier neuf: le temp est ne en 0600, on finit en creation normale
+    // Fichier neuf: le temporaire est ne en 0600, on rend les droits d'une creation normale.
+    // Lire l'umask oblige a l'ecraser, d'ou le second appel qui le remet.
     um := fpUmask(0);
-    fpUmask(um); // lire l'umask oblige a l'ecraser: on le remet aussitot
+    fpUmask(um);
     fpChmod(PChar(ADest), TMode(&666) and not um);
   end;
 end;
@@ -572,9 +539,8 @@ var
   flags: cint;
 begin
   ANotRegular := False;
-  // O_NONBLOCK: l'ouverture d'un FIFO sans ecrivain rend la main au lieu de
-  // bloquer AVANT tout controle; le type est ensuite verifie sur le
-  // descripteur reellement ouvert (anti-TOCTOU)
+  // O_NONBLOCK: un FIFO sans ecrivain rend la main au lieu de bloquer AVANT tout controle.
+  // Le type est ensuite verifie sur le descripteur reellement ouvert, pas sur le nom.
   fd := FpOpen(PChar(APath), O_RDONLY or O_NONBLOCK);
   if fd < 0 then
     raise EFOpenError.CreateFmt('Unable to open file "%s"', [APath]);
@@ -584,7 +550,6 @@ begin
     ANotRegular := True;
     Exit(nil);
   end;
-  // fichier ordinaire confirme: lectures bloquantes normales retablies
   flags := FpFcntl(fd, F_GETFL);
   if flags >= 0 then
     FpFcntl(fd, F_SETFL, flags and not O_NONBLOCK);
@@ -592,9 +557,8 @@ begin
 end;
 {$ELSE}
 begin
-  // Windows: les noms de peripheriques (CON, NUL, \\.\pipe\...) restent
-  // ouvrables par TFileStream; le type est verifie sur le handle reellement
-  // ouvert, comme sous Unix, avant toute lecture susceptible de bloquer
+  // Windows: CON, NUL ou \\.\pipe\... s'ouvrent tres bien par TFileStream. Le type est
+  // verifie sur le handle ouvert avant toute lecture susceptible de bloquer.
   ANotRegular := False;
   Result := TFileStream.Create(APath, fmOpenRead or fmShareDenyWrite);
   if not HandleIsRegularFile(Result.Handle) then
@@ -609,7 +573,7 @@ function ReplaceByRenamePrivate(const ATmp, ADest: string; out ADirSynced: Boole
 begin
   ADirSynced := False;
   {$IFDEF UNIX}
-  // aucune preservation de mode: un 0644 herite ne survit pas a la reecriture
+  // Aucune preservation de mode: un 0644 herite ne survit pas a la reecriture.
   Result := RenameFile(ATmp, ADest);
   if Result then
   begin
@@ -633,7 +597,7 @@ procedure MakePrivateFile(const APath: string);
 begin
   if APath = '' then Exit;
   {$IFDEF UNIX}
-  fpChmod(PChar(APath), &600); // rattrapage best effort
+  fpChmod(PChar(APath), &600);
   {$ENDIF}
 end;
 
@@ -646,7 +610,6 @@ begin
 end;
 
 type
-  // copie d'un flux source dans le temporaire (SavePrivateStream)
   TStreamCopier = class
     Src: TStream;
     procedure Fill(ADest: TStream);
@@ -654,7 +617,7 @@ type
 
 procedure TStreamCopier.Fill(ADest: TStream);
 begin
-  // CopyFrom a 0: FPC repart du debut de la source
+  // CopyFrom avec un compte a 0: FPC repart du debut de la source et copie tout.
   if Src.Size > 0 then
     ADest.CopyFrom(Src, 0);
 end;
@@ -682,7 +645,7 @@ begin
   try
     try
       AFill(net);
-      // durable AVANT le rename, comme les documents (SEC-03)
+      // Durable AVANT le rename, sinon une coupure peut laisser un fichier vide a la place.
       if not FlushToDisk(net.Handle) then
         raise EStreamError.CreateFmt('The disk did not confirm the write of %s', [APath]);
     finally
@@ -690,7 +653,7 @@ begin
     end;
     if not ReplaceByRenamePrivate(tmp, APath, synced) then
       raise EStreamError.CreateFmt('Cannot replace %s', [APath]);
-    // jamais de succes annonce sans confirmation du disque
+    // Jamais de succes annonce sans confirmation du disque.
     if not synced then
       raise EStreamError.CreateFmt('%s was written, but the disk did not confirm ' +
         'the folder update: the file may be lost after a power failure', [APath]);
@@ -707,10 +670,9 @@ var
 begin
   for i := 1 to 20 do
   begin
-    // 32 bits de poids faible passes en Int64: un LongWord devient un
-    // vtInteger dans l'array of const et -Cr refuse alors toute valeur
-    // >= 2^31 (GetTickCount64 compte depuis l'epoque Unix sous Darwin, et
-    // depuis le demarrage ailleurs: 24,8 jours suffisent)
+    // Les 32 bits de poids faible passent en Int64: un LongWord devient un vtInteger dans
+    // l'array of const et -Cr refuse toute valeur >= 2^31. GetTickCount64 compte depuis
+    // l'epoque Unix sous Darwin, et ailleurs 24,8 jours d'uptime suffisent.
     ATmpName := Format('%s.rtt%.8x%.4x.tmp',
       [ADest, Int64(GetTickCount64 and $FFFFFFFF), Random($10000)]);
     h := ExclusiveCreate(ATmpName);

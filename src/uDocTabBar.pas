@@ -4,10 +4,8 @@ unit uDocTabBar;
 
 {$mode objfpc}{$H+}
 
-// Barre d'onglets de documents dessinee a la main, sans TPageControl. La liste
-// vit dans l'application: relue par evenements a chaque mise en page. La barre
-// signale les gestes (activer, fermer, nouveau, deplacer, menu) sans rien
-// executer elle-meme.
+// Onglets de documents dessines a la main, sans TPageControl. La liste vit dans
+// l'application, relue par evenements; la barre signale les gestes et n'execute rien.
 
 interface
 
@@ -51,7 +49,7 @@ type
     FTabsLeft, FTabsRight: Integer;
     FContentW: Integer;
     FDimmed: Boolean;
-    FReveal: Boolean;     // amener l'onglet actif en vue a la prochaine peinture
+    FReveal: Boolean;
     FBlinkOn: Boolean;
     FBlink: TTimer;
     FDragTab: Integer;
@@ -94,10 +92,9 @@ type
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
   public
     constructor Create(AOwner: TComponent); override;
-    // liste ou onglet actif change: relit tout et ramene l'actif en vue.
-    // Un simple changement d'etat (modifie, lecture seule): Invalidate suffit
+    // liste ou onglet actif change. Simple changement d'etat: Invalidate suffit
     procedure RefreshBar;
-    // onglet actif attenue: la barre n'est pas celle du groupe qui a le focus
+    // onglet actif attenue: ce groupe n'a pas le focus
     property Dimmed: Boolean read FDimmed write SetDimmed;
     property OnTabCount: TDocTabCountEvent read FOnTabCount write FOnTabCount;
     property OnTabInfo: TDocTabInfoEvent read FOnTabInfo write FOnTabInfo;
@@ -106,7 +103,6 @@ type
     // bouton '+' ou double-clic sur la bande vide
     property OnNewTab: TNotifyEvent read FOnNewTab write FOnNewTab;
     property OnTabMove: TDocTabMoveEvent read FOnTabMove write FOnTabMove;
-    // onglet lache hors de la barre: a l'application de trouver la cible
     property OnTabDropOutside: TDocTabPointEvent read FOnTabDropOutside write FOnTabDropOutside;
     // clic droit: la barre n'active rien et n'a pas de menu a elle
     property OnTabContextMenu: TDocTabPointEvent read FOnTabContextMenu write FOnTabContextMenu;
@@ -190,7 +186,6 @@ begin
   SetLength(FSlots, 0);
   SetLength(FSlots, n);
 
-  // police du kit relue ici: un changement de theme ne demande qu'un Invalidate
   Canvas.Font := Font;
   if RSUiFontName <> '' then Canvas.Font.Name := RSUiFontName;
   if RSUiFontSize > 0 then Canvas.Font.Size := RSUiFontSize;
@@ -203,7 +198,6 @@ begin
   for i := 0 to n - 1 do
   begin
     if Assigned(FOnTabInfo) then FOnTabInfo(Self, i, FSlots[i].Info);
-    // largeur gardee dans Full le temps de connaitre le defilement
     FSlots[i].Full := Rect(0, 0, TabW(FSlots[i].Info.Caption), ClientHeight);
     Inc(FContentW, FSlots[i].Full.Right);
     if FSlots[i].Info.Recording then rec := True;
@@ -240,7 +234,6 @@ begin
   end;
 end;
 
-// apres BuildLayout: decale les slots deja poses plutot que de tout relire
 procedure TDocTabBar.RevealActive;
 var
   s, i, old, slotLeft, slotRight, viewW: Integer;
@@ -386,7 +379,6 @@ begin
   else bg := clTabInactive;
   Canvas.Brush.Color := bg;
   Canvas.Pen.Color := bg;
-  // coins bas rejetes sous la barre: seuls les coins hauts s'arrondissent
   Canvas.RoundRect(r.Left, r.Top, r.Right, ClientHeight + 8, 7, 7);
 
   if active and FDimmed then
@@ -409,7 +401,6 @@ begin
   if active or hovered then iconCol := clTabIconHi else iconCol := clTabIcon;
   dot := Rect(FSlots[ASlot].Close.Left + (CLOSE_SZ - DOT_D) div 2,
     (ClientHeight - DOT_D) div 2, 0, 0);
-  // au survol la croix reprend toujours la place du temoin
   if info.Recording and not hovered then
   begin
     if FBlinkOn then DrawDot(dot, clMacroRec);
@@ -459,7 +450,6 @@ begin
   Canvas.FillRect(FPlus);
   DrawGlyphPlus(FPlus, clTabGlyph);
 
-  // marqueur d'insertion pendant un drag
   if FDragging and (FDragX >= 0) and (FDragX < ClientWidth) then
   begin
     mx := GapX(GapIndex(FDragX));

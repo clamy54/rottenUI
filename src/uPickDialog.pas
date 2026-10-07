@@ -4,11 +4,8 @@ unit uPickDialog;
 
 {$mode objfpc}{$H+}
 
-// Choix d'un element dans une liste, a la maniere des pages de classes de
-// l'assistant de creation: aide, recherche (nom, colonnes), liste, et
-// description de la ligne surlignee. Un seul element est choisi; double
-// clic ou Entree valide. Un bouton secondaire facultatif rend mrRetry
-// (commande voisine, par exemple ajouter une classe d'objet).
+// Choix d'un element dans une liste filtrable, description de la ligne en dessous.
+// Un seul gagnant, double clic ou Entree. Le bouton facultatif rend mrRetry.
 
 interface
 
@@ -17,9 +14,9 @@ uses
 
 type
   TPickRow = record
-    Key: string;               // valeur rendue
-    Cells: array of string;    // colonnes affichees (la premiere: le nom)
-    Info: string;              // description, lignes separees par #10
+    Key: string;
+    Cells: array of string;
+    Info: string;
   end;
   TPickRows = array of TPickRow;
 
@@ -29,7 +26,7 @@ type
     FList: TRtListGrid;
     FInfo: TMemo;
     FRows: TPickRows;
-    FShown: array of Integer;  // index dans FRows des lignes affichees
+    FShown: array of Integer;
     FChosen: string;
     FOkButton: TButton;
     procedure FilterChange(Sender: TObject);
@@ -37,21 +34,21 @@ type
     procedure ListActivate(Sender: TObject; AIndex: Integer);
     procedure OkClick(Sender: TObject);
     procedure Refill;
+    function GetOkCaption: string;
+    procedure SetOkCaption(const AValue: string);
   public
     constructor CreatePick(AOwner: TComponent; const ACaption, AHelp: string;
       const AColumns: array of string; const AWidths: array of Integer;
       const AExtraCaption: string = '');
     procedure SetRows(const ARows: TPickRows);
     function Chosen: string;
-    // tests: meme chemin que la frappe et la validation
     procedure SetFilter(const AText: string);
     function VisibleKeys: string;
     function Choose(const AKey: string): Boolean;
     function InfoText: string;
+    property OkCaption: string read GetOkCaption write SetOkCaption;
   end;
 
-  // tests: remplace ShowModal (le test inspecte le dialogue, choisit et rend
-  // le resultat)
   TPickOverride = function(ADialog: TPickDialog): TModalResult;
 
 var
@@ -80,14 +77,11 @@ end;
 constructor TPickDialog.CreatePick(AOwner: TComponent; const ACaption, AHelp: string;
   const AColumns: array of string; const AWidths: array of Integer; const AExtraCaption: string);
 var
-  lbl: TLabel;
   i: Integer;
   b: TButton;
 begin
   inherited CreateDialog(AOwner, ACaption, 900, 620);
-  lbl := MakeLabel(Body, AHelp);
-  lbl.WordWrap := True;
-  lbl.ShowAccelChar := False;
+  MakeDataLabel(Body, AHelp);
   MakeLabel(Body, rsPickSearch).BorderSpacing.Top := 6;
   FFilter := MakeEdit(Body);
   FFilter.OnChange := @FilterChange;
@@ -107,7 +101,6 @@ begin
     else FList.AddColumn(AColumns[i], 200);
   FList.OnSelectRow := @ListSelect;
   FList.OnActivateRow := @ListActivate;
-  // boutons de droite a gauche: Cancel, Add, puis la commande voisine
   AddButton(rsPickCancel, mrCancel, False, True);
   FOkButton := AddButton(rsPickOk, mrNone, True);
   FOkButton.OnClick := @OkClick;
@@ -215,6 +208,16 @@ end;
 function TPickDialog.InfoText: string;
 begin
   Result := FInfo.Text;
+end;
+
+function TPickDialog.GetOkCaption: string;
+begin
+  Result := FOkButton.Caption;
+end;
+
+procedure TPickDialog.SetOkCaption(const AValue: string);
+begin
+  FOkButton.Caption := AValue;
 end;
 
 end.

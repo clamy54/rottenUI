@@ -4,10 +4,10 @@ unit uThemeData;
 
 {$mode objfpc}{$H+}
 
-// Definitions de themes sans LCL: jetons, conversion RGB -> BGR (TColor),
-// analyse JSON transactionnelle. Un theme est une entree non fiable: taille et
-// profondeur bornees, couleurs "#RRGGBB" strictes, familles de fontes en liste
-// blanche, aucun script, URL ni chemin. Un theme invalide n'est jamais applique.
+// Definitions de themes, sans LCL. Un theme est une entree hostile jusqu'a preuve du
+// contraire: taille et profondeur bornees, couleurs #RRGGBB strictes, fontes en liste
+// blanche, ni script, ni URL, ni chemin. Un theme invalide n'est jamais applique, meme
+// a moitie.
 
 interface
 
@@ -42,7 +42,6 @@ type
     ttFindToggleOnText, ttFindToggleOff, ttFindToggleOffText, ttSideHeader,
     ttCodeConstant, ttCodeOperator);
 
-  // -1 = jeton absent du fichier: la valeur de base s'applique
   TThemeColors = array[TThemeToken] of LongInt;
 
   TThemeKind = (tkBuiltin, tkRottenText, tkUser);
@@ -54,7 +53,7 @@ type
     Colors: TThemeColors;
     UiFamily: string;
     EditorFamily: string;
-    EditorSize: Integer;       // 0 = defaut
+    EditorSize: Integer;
     Warnings: array of string;
   end;
 
@@ -84,21 +83,15 @@ const
   FONT_FAMILY_KEYS: array[0..5] of string =
     ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono');
 
-// 0xRRGGBB -> 0x00BBGGRR (ordre TColor)
 function RgbToBgr(ARgb: LongWord): LongInt;
 function BgrToRgb(ABgr: LongInt): LongWord;
-// "#RRGGBB" strict
 function ParseHexColor(const S: string; out ARgb: LongWord): Boolean;
 function EmptyColors: TThemeColors;
-// Valeurs de base: Rotten (sombre) ou Light (clair), en RGB
 function RottenBase: TThemeColors;
 function LightBase: TThemeColors;
 function NordBase: TThemeColors;
-// Complete les jetons absents: base choisie selon la luminance du fond
 function ResolveColors(const AColors: TThemeColors): TThemeColors;
 function IsDarkRgb(ARgb: LongWord): Boolean;
-// AIgnoreMenu: themes RottenText, dont les menus clairs cedent a la coque
-// RottenSSHrimp (arbitrage 4.1); les couleurs de menu derivent du panneau.
 function ParseThemeJson(const AText, AFallbackName: string; AKind: TThemeKind;
   out ADef: TThemeDef; out AError: string): Boolean;
 
@@ -200,8 +193,6 @@ begin
   SetC(Result, ttScpOk, $8FB84E); SetC(Result, ttScpWarn, $D7A03A);
   SetC(Result, ttScpErr, $F14C4C);
   SetC(Result, ttProgressBar, $FB9E6B); SetC(Result, ttProgressTrack, $3A3A3D);
-  // onglet actif du volet sans focus: deduit, la palette d'onglets est celle
-  // de la coque
   SetC(Result, ttSelectionInactive, $2C3B4C); SetC(Result, ttGutterFgCur, $C6C6C6);
   SetC(Result, ttGutterCurBg, $282828); SetC(Result, ttRightEdge, $2A2A2A);
   SetC(Result, ttModifiedDot, $6A9955); SetC(Result, ttTabGlyph, $D4D4D4);
@@ -311,8 +302,8 @@ begin
     (((A and $FF) * APct + (B and $FF) * (100 - APct)) div 100);
 end;
 
-// Jetons d'editeur absents du theme: tires de SES couleurs, pas de la base
-// (une constante bleue de Rotten jurerait dans un theme vert phosphore).
+// Absents du theme: tires de SES couleurs, pas de la base. Une constante bleue dans un theme
+// vert phosphore, ca se remarque.
 procedure DeriveEditorTokens(var C: TThemeColors);
 
   procedure D(T: TThemeToken; AValue: LongInt);
@@ -416,7 +407,7 @@ begin
     Exit;
   end;
   try
-    // GetJSON refuse la marque d'ordre d'octets que posent certains editeurs
+    // GetJSON s'etrangle sur un BOM
     if Copy(AText, 1, 3) = #$EF#$BB#$BF then
       data := GetJSON(Copy(AText, 4, MaxInt))
     else
@@ -455,7 +446,8 @@ begin
       begin
         if (obj.Items[i].JSONType <> jtString) or not FamilyOk(obj.Items[i].AsString) then
         begin
-          // chemin, URL ou famille inconnue: jamais suivi
+          // Chemin, URL ou famille inconnue: jamais suivi. Un theme choisit une couleur, pas un
+          // fichier a charger.
           AError := Format('"%s" must name an embedded font family', [key]);
           Exit;
         end;
@@ -494,12 +486,10 @@ begin
         end;
       if not found then
       begin
-        // cles RottenText sans equivalent direct: signalees, jamais fatales
         aliasKey := key;
         AddWarning(ADef, 'unknown key ignored: ' + aliasKey);
       end;
     end;
-    // jetons de coque derives des jetons d'editeur pour les themes RottenText
     if AKind = tkRottenText then
     begin
       if ADef.Colors[ttAppBg] < 0 then ADef.Colors[ttAppBg] := ADef.Colors[ttEditorBg];

@@ -4,10 +4,8 @@ unit uRtButton;
 
 {$mode objfpc}{$H+}
 
-// Bouton plat dessine aux couleurs du theme: icone du catalogue et/ou texte,
-// fond teinte au survol et a l'appui, cadre d'accent quand il a le focus.
-// Clic souris, Espace ou Entree. Le fond suit celui du parent (lignes
-// teintees du constructeur de filtres, barre de navigation).
+// Boutons plats, segments et etapes d'assistant, dessines aux couleurs du theme.
+// Les boutons natifs ignorent le theme avec une constance qu'on aimerait voir ailleurs.
 
 interface
 
@@ -23,10 +21,10 @@ type
     FGlyph: TRtButtonGlyph;
     FText: string;
     FHot, FDown: Boolean;
-    FInk: TColor;       // icone et texte (clDefault: texte de l'application)
-    FFill: TColor;      // fond au repos (clNone: celui du parent)
-    FBorder: TColor;    // cadre au repos (clNone: aucun)
-    FInsetY: Integer;   // marge verticale du dessin (pilule dans une barre)
+    FInk: TColor;
+    FFill: TColor;
+    FBorder: TColor;
+    FInsetY: Integer;
     procedure SetText(const AValue: string);
     procedure SetIconId(const AValue: string);
     function InkColor: TColor;
@@ -43,7 +41,6 @@ type
   public
     constructor Create(AOwner: TComponent); override;
     procedure Setup(const AIconId, AText: string; AInk: TColor = clDefault);
-    // largeur et hauteur naturelles dans la police courante
     function PreferredWidth: Integer;
     function PreferredHeight: Integer;
     procedure FitWidth;
@@ -57,15 +54,15 @@ type
     property OnClick;
   end;
 
-  // Choix exclusif en segments (portee d'un groupe, type...): le segment
-  // choisi est rempli de la couleur d'accent. Fleches gauche et droite.
   TRtSegmented = class(TCustomControl)
   private
     FItems: TStringList;
     FItemIndex: Integer;
     FOnChange: TNotifyEvent;
+    FColors: array of TColor;
     procedure SetItemIndex(AValue: Integer);
     function SegmentAt(X: Integer): Integer;
+    function SegmentColor(AIndex: Integer): TColor;
   protected
     procedure Paint; override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
@@ -76,14 +73,14 @@ type
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure SetChoices(const AItems: array of string; AIndex: Integer);
+    // Une couleur par segment, dans l'ordre. clDefault ou absent: l'accent du theme.
+    procedure SetColors(const AColors: array of TColor);
     function PreferredWidth: Integer;
     property ItemIndex: Integer read FItemIndex write SetItemIndex;
     property Items: TStringList read FItems;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
 
-  // Progression d'un assistant: une pastille numerotee par etape, reliees;
-  // faites (coche), courante (accent), a venir (contour discret)
   TRtStepper = class(TCustomControl)
   private
     FSteps: TStringList;
@@ -99,8 +96,8 @@ type
     property Current: Integer read FCurrent write SetCurrent;
   end;
 
-// Largeur d'un texte dans AFont (style AStyle ajoute), sans canevas de
-// controle: utilisable avant que le controle ait une fenetre
+// Mesure sur un bitmap a part: un controle sans fenetre n'a pas encore de canevas
+// digne de ce nom.
 function MeasureText(AFont: TFont; const AText: string; AStyle: TFontStyles = []): Integer;
 
 implementation
@@ -127,7 +124,8 @@ end;
 constructor TRtFlatButton.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  // clic rendu par MouseUp et le clavier (pas de double declenchement LCL)
+  // csClickEvents retire: le clic part de MouseUp et du clavier, sinon la LCL en ajoute
+  // un second.
   ControlStyle := ControlStyle + [csOpaque] - [csClickEvents, csDoubleClicks, csAcceptsControls];
   TabStop := True;
   FInk := clDefault;
@@ -208,7 +206,6 @@ var
   px, x, cx, cy, i, tw: Integer;
 begin
   back := BackColor;
-  // fond du parent sous les coins arrondis
   Canvas.Brush.Style := bsSolid;
   if Parent <> nil then Canvas.Brush.Color := Parent.Brush.Color else Canvas.Brush.Color := clAppBg;
   Canvas.FillRect(ClientRect);
@@ -231,7 +228,6 @@ begin
   Canvas.Font.Color := fg;
   tw := 0;
   if FText <> '' then tw := Canvas.TextWidth(FText);
-  // contenu centre: icone puis texte
   x := 0;
   if (FIconId <> '') or (FGlyph = rbgDots) then x := px;
   if (x > 0) and (tw > 0) then Inc(x, GAP);
@@ -295,8 +291,8 @@ begin
   FDown := False;
   Invalidate;
   inherited MouseUp(Button, Shift, X, Y);
-  // TControl.MouseUp ne declenche pas OnClick pour un TCustomControl: clic
-  // rendu ici, seulement si le bouton est relache sur le controle
+  // TControl.MouseUp ne declenche pas OnClick pour un TCustomControl. Le clic part d'ici,
+  // et seulement si le bouton est relache sur le controle.
   if wasDown and (Button = mbLeft) and Enabled and PtInRect(ClientRect, Point(X, Y)) then
     Click;
 end;
@@ -322,8 +318,6 @@ begin
   inherited DoExit;
   Invalidate;
 end;
-
-{ TRtSegmented }
 
 constructor TRtSegmented.Create(AOwner: TComponent);
 begin
@@ -352,6 +346,23 @@ begin
   Invalidate;
 end;
 
+procedure TRtSegmented.SetColors(const AColors: array of TColor);
+var
+  i: Integer;
+begin
+  SetLength(FColors, Length(AColors));
+  for i := 0 to High(AColors) do FColors[i] := AColors[i];
+  Invalidate;
+end;
+
+function TRtSegmented.SegmentColor(AIndex: Integer): TColor;
+begin
+  if (AIndex <= High(FColors)) and (FColors[AIndex] <> clDefault) then
+    Result := FColors[AIndex]
+  else
+    Result := clAccent;
+end;
+
 function TRtSegmented.PreferredWidth: Integer;
 var
   i, w: Integer;
@@ -378,7 +389,7 @@ end;
 
 procedure TRtSegmented.Paint;
 var
-  bg, txt: TColor;
+  bg, txt, sel: TColor;
   i, x0, x1: Integer;
   seg: TRect;
 begin
@@ -399,12 +410,12 @@ begin
     seg := Rect(x0 + 2, 2, x1 - 2, ClientHeight - 2);
     if i = FItemIndex then
     begin
+      sel := SegmentColor(i);
       Canvas.Brush.Style := bsSolid;
-      Canvas.Brush.Color := clAccent;
-      Canvas.Pen.Color := clAccent;
+      Canvas.Brush.Color := sel;
+      Canvas.Pen.Color := sel;
       Canvas.RoundRect(seg.Left, seg.Top, seg.Right, seg.Bottom, 8, 8);
-      // texte contraste sur l'accent: fond du theme si l'accent est clair
-      if IsDarkColor(clAccent) then txt := clWhite else txt := RgbHexToColor($101010);
+      if IsDarkColor(sel) then txt := clWhite else txt := RgbHexToColor($101010);
     end
     else
       txt := BlendColor(clAppFg, bg, 70);
@@ -439,6 +450,11 @@ begin
         ItemIndex := FItemIndex + 1;
         Key := 0;
       end;
+    VK_SPACE:
+      begin
+        if FItems.Count > 0 then ItemIndex := (FItemIndex + 1) mod FItems.Count;
+        Key := 0;
+      end;
   end;
 end;
 
@@ -453,8 +469,6 @@ begin
   inherited DoExit;
   Invalidate;
 end;
-
-{ TRtStepper }
 
 constructor TRtStepper.Create(AOwner: TComponent);
 begin
@@ -514,7 +528,6 @@ begin
   begin
     x := i * seg + 2;
     r := Rect(x, cy - d div 2, x + d, cy + d div 2);
-    // trait vers l'etape suivante, apres le libelle
     Canvas.Font.Style := [];
     if i = FCurrent then Canvas.Font.Style := [fsBold];
     tw := Canvas.TextWidth(FSteps[i]);
@@ -530,7 +543,6 @@ begin
         Canvas.Pen.Width := 1;
       end;
     end;
-    // pastille
     if i < FCurrent then
     begin
       fill := ok;
@@ -553,7 +565,6 @@ begin
     Canvas.Brush.Style := bsClear;
     if i < FCurrent then
     begin
-      // coche
       Canvas.Pen.Color := ink;
       Canvas.Pen.Width := 2;
       Canvas.Line(r.Left + d div 4, cy, r.Left + d * 2 div 5 + 1, cy + d div 5);
@@ -568,7 +579,6 @@ begin
       Canvas.TextOut((r.Left + r.Right - Canvas.TextWidth(num)) div 2,
         cy - Canvas.TextHeight(num) div 2, num);
     end;
-    // libelle
     if i = FCurrent then
     begin
       Canvas.Font.Style := [fsBold];

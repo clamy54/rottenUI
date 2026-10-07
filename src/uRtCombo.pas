@@ -5,18 +5,10 @@ unit uRtCombo;
 {$mode objfpc}{$H+}
 {$IFDEF LCLCocoa}{$modeswitch objectivec1}{$ENDIF}
 
-// Liste de choix de la coque, dessinee aux couleurs du theme: la liste
-// deroulante native de Windows impose un cadre et un bouton clairs.
-// Interface volontairement proche de TComboBox en lecture seule.
-//
-// Le choix s'ouvre dans une liste deroulante dediee (TRtDropList), et non
-// plus dans un menu contextuel: un menu plus haut que l'ecran n'avait que les
-// fleches de defilement natives de Windows (claires, sans recherche), cas
-// signale sur les attributs d'une classe (une cinquantaine pour
-// inetOrgPerson, des centaines pour un compte AD). La liste tient dans la
-// zone de travail de l'ecran (20 lignes au plus), s'ouvre vers le haut s'il y
-// a plus de place, defile (barre, molette, clavier) et, longue, se filtre en
-// tapant.
+// Liste de choix dessinee aux couleurs du theme, facon TComboBox en lecture seule. La
+// combo native de Windows impose son cadre et son bouton clairs, et un menu plus haut que
+// l'ecran n'offrait que ses fleches natives: cinquante attributs pour inetOrgPerson, des
+// centaines pour un compte AD. D'ou une liste maison qui defile et se filtre.
 
 interface
 
@@ -24,9 +16,7 @@ uses
   Classes, SysUtils, Controls, StdCtrls, ExtCtrls, Graphics, Forms, LCLType, Types;
 
 const
-  // lignes visibles au plus; au-dela la liste defile
   DROP_MAX_ROWS = 20;
-  // a partir de ce nombre d'elements, un champ de filtre en tete
   DROP_FILTER_MIN = 16;
 
 type
@@ -38,10 +28,7 @@ type
     FFrame: TPanel;
     FFilter: TEdit;
     FList: TListBox;
-    FMap: array of Integer;    // ligne affichee -> index dans les elements
-    // identite de chaque ligne au moment du remplissage: l'objet associe
-    // (Items.Objects), pour retrouver une ligne apres une mise a jour meme
-    // quand deux libelles sont identiques
+    FMap: array of Integer;
     FRowObjs: array of TObject;
     FRowHeight: Integer;
     FDone: Boolean;
@@ -56,15 +43,12 @@ type
     procedure MoveBy(ADelta: Integer);
   public
     constructor CreateFor(ACombo: TRtComboBox);
-    // position et taille: sous la liste ou au-dessus, dans la zone de travail
     procedure Place;
     procedure CloseDrop;
-    // elements changes pendant que la liste est ouverte (arrivee asynchrone
-    // des suffixes UPN, par exemple): lignes et table d'index reconstruites,
-    // sinon choisir une ligne pourrait selectionner l'element qui occupe
-    // desormais son ancien index; la selection est conservee par valeur
+    // Elements changes liste ouverte (suffixes UPN arrives en retard, par exemple): lignes et
+    // index sont reconstruits, sinon un clic choisirait l'element qui squatte l'ancien index.
+    // La ligne surlignee est retrouvee par son objet, ou par libelle et rang de doublon.
     procedure ItemsUpdated;
-    // tests: memes chemins que la frappe et le clavier
     procedure SetFilterText(const AText: string);
     procedure PressKey(AKey: Word);
     function VisibleCount: Integer;
@@ -106,9 +90,7 @@ type
     property Items: TStrings read GetItems;
     property ItemIndex: Integer read FItemIndex write SetItemIndex;
     property Text: string read GetText;
-    // liste ouverte (nil sinon)
     property DropList: TRtDropList read FDrop;
-    // compatibilite TComboBox: sans effet, la liste n'est jamais editable
     property Style: TComboBoxStyle read FStyle write FStyle;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnDropDown: TNotifyEvent read FOnDropDown write FOnDropDown;
@@ -120,10 +102,9 @@ uses
   Math, LCLIntf, uTheme, uUiKit{$IFDEF LCLCocoa}, CocoaAll{$ENDIF};
 
 {$IFDEF LCLCocoa}
-// Cocoa: une session modale (ShowModal) ne transmet les clics qu'a la fenetre
-// modale et a ses fenetres enfants; PopupParent n'en fait pas une enfant tant
-// que le handle n'existe pas. La liste est donc rattachee apres Show, comme
-// le fait la LCL pour son calendrier (cocoawsdatepicker).
+// Cocoa: une session modale ne livre les clics qu'a la fenetre modale et a ses enfants,
+// et PopupParent n'en fait pas une enfant tant que le handle n'existe pas. On rattache
+// apres Show, comme la LCL le fait pour son propre calendrier.
 procedure AttachToParentWindow(ADrop, AParent: TCustomForm);
 begin
   if (AParent = nil) or not AParent.HandleAllocated or not ADrop.HandleAllocated then Exit;
@@ -141,8 +122,6 @@ begin
 end;
 {$ENDIF}
 
-{ TRtDropList }
-
 constructor TRtDropList.CreateFor(ACombo: TRtComboBox);
 var
   pf: TCustomForm;
@@ -152,7 +131,6 @@ begin
   FCombo := ACombo;
   BorderStyle := bsNone;
   ShowInTaskBar := stNever;
-  // au-dessus du dialogue (modal compris) qui porte la liste
   pf := GetParentForm(ACombo);
   if pf <> nil then
   begin
@@ -163,7 +141,6 @@ begin
   KeyPreview := True;
   OnKeyDown := @KeysDown;
   OnDeactivate := @FormDeactivate;
-  // cadre d'un pixel: le fond du formulaire autour du panneau
   Color := clMenuSep;
   FFrame := TPanel.Create(Self);
   FFrame.Parent := Self;
@@ -175,8 +152,7 @@ begin
   FRowHeight := Max(FontTextHeight(Font) + 8, 20);
   if ACombo.Items.Count >= DROP_FILTER_MIN then
   begin
-    // champ plat aux couleurs de l'editeur (la bordure native reste claire
-    // en theme sombre)
+    // Champ plat aux couleurs de l'editeur: la bordure native reste claire en theme sombre.
     box := TPanel.Create(Self);
     box.Parent := FFrame;
     box.Align := alTop;
@@ -237,7 +213,6 @@ begin
   finally
     FList.Items.EndUpdate;
   end;
-  // choix courant s'il est affiche, sinon la premiere ligne
   if keep < 0 then keep := 0;
   if FList.Items.Count > 0 then FList.ItemIndex := keep;
 end;
@@ -253,11 +228,10 @@ begin
   wa := Screen.MonitorFromPoint(pt).WorkareaRect;
   rows := EnsureRange(FCombo.Items.Count, 1, DROP_MAX_ROWS);
   filterH := 0;
-  if FFilter <> nil then filterH := FontTextHeight(Font) + 18;  // champ et ses marges
+  if FFilter <> nil then filterH := FontTextHeight(Font) + 18;
   want := rows * FRowHeight + filterH + 4;
   below := wa.Bottom - (pt.Y + FCombo.Height);
   above := pt.Y - wa.Top;
-  // largeur du plus long libelle, au moins celle de la liste fermee
   tw := 0;
   bmp := Graphics.TBitmap.Create;
   try
@@ -268,8 +242,6 @@ begin
     bmp.Free;
   end;
   w := Min(Max(FCombo.Width, tw + 28 + 16 + GetSystemMetrics(SM_CXVSCROLL)), wa.Right - wa.Left);
-  // en dessous s'il y a la place, sinon du cote le plus grand; jamais hors
-  // de l'ecran (la liste defile)
   if (want <= below) or (below >= above) then
   begin
     h := Min(want, below);
@@ -295,7 +267,6 @@ begin
   c.Brush.Style := bsClear;
   c.Font.Color := clMenuText;
   ty := ARect.Top + (ARect.Bottom - ARect.Top - c.TextHeight('Ag')) div 2;
-  // puce du choix courant, comme le menu qu'elle remplace
   if (Index >= 0) and (Index <= High(FMap)) and (FMap[Index] = FCombo.ItemIndex) then
     c.TextOut(ARect.Left + 10, ty, #$E2#$80#$A2);
   if (Index >= 0) and (Index < FList.Items.Count) then
@@ -308,7 +279,6 @@ procedure TRtDropList.ListMouseMove(Sender: TObject; Shift: TShiftState; X, Y: I
 var
   i: Integer;
 begin
-  // survol: la ligne sous la souris est mise en valeur
   i := FList.ItemAtPos(Point(X, Y), True);
   if (i >= 0) and (i <> FList.ItemIndex) then FList.ItemIndex := i;
 end;
@@ -349,7 +319,6 @@ begin
     VK_NEXT: begin MoveBy(page); Key := 0; end;
     VK_PRIOR: begin MoveBy(-page); Key := 0; end;
     VK_HOME:
-      // dans le filtre, Debut et Fin restent ceux du texte
       if FFilter = nil then begin MoveBy(-FList.Items.Count); Key := 0; end;
     VK_END:
       if FFilter = nil then begin MoveBy(FList.Items.Count); Key := 0; end;
@@ -363,7 +332,6 @@ end;
 
 procedure TRtDropList.FormDeactivate(Sender: TObject);
 begin
-  // clic ailleurs: la liste se ferme sans choisir
   CloseDrop;
 end;
 
@@ -387,16 +355,11 @@ var
   occ, cnt, i, match: Integer;
 begin
   if FDone then Exit;
-  // liste videe pendant l'ouverture: fermee sans choisir, une liste vide
-  // n'offre aucun choix valable
   if FCombo.Items.Count = 0 then
   begin
     CloseDrop;
     Exit;
   end;
-  // identite de la ligne surlignee AVANT la reconstruction: objet associe,
-  // et rang parmi les doublons du meme libelle (le texte seul pourrait
-  // designer un autre element apres un reordonnancement)
   sel := '';
   obj := nil;
   occ := 0;
@@ -414,8 +377,6 @@ begin
     match := -1;
     if obj <> nil then
     begin
-      // l'objet est l'identite: restauree seulement s'il est present une
-      // fois exactement
       for i := 0 to High(FRowObjs) do
         if FRowObjs[i] = obj then
           if match < 0 then match := i
@@ -427,7 +388,6 @@ begin
     end
     else
     begin
-      // sans objet: meme libelle, meme rang de doublon, sinon rien
       cnt := 0;
       for i := 0 to FList.Items.Count - 1 do
         if FList.Items[i] = sel then
@@ -454,7 +414,7 @@ begin
   DetachFromParentWindow(Self);
   {$ENDIF}
   Hide;
-  // liberee hors de ses propres gestionnaires
+  // Release, pas Free: on est encore dans nos propres gestionnaires d'evenements.
   Release;
 end;
 
@@ -493,8 +453,6 @@ begin
   Result := FList.ItemIndex;
 end;
 
-{ TRtComboBox }
-
 constructor TRtComboBox.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
@@ -528,7 +486,6 @@ procedure TRtComboBox.ItemsChanged(Sender: TObject);
 begin
   if FItemIndex >= FItems.Count then
     FItemIndex := -1;
-  // liste ouverte: ses lignes et sa table d'index suivent les elements
   if FDrop <> nil then FDrop.ItemsUpdated;
   Invalidate;
 end;
@@ -602,7 +559,6 @@ begin
   Canvas.Brush.Style := bsClear;
   ty := (ClientHeight - Canvas.TextHeight('Ag')) div 2;
   Canvas.TextRect(Classes.Rect(r.Left + 8, r.Top, r.Right - 22, r.Bottom), r.Left + 8, ty, GetText);
-  // chevron
   cx := r.Right - 12;
   cy := ClientHeight div 2;
   Canvas.Pen.Color := Canvas.Font.Color;
@@ -615,8 +571,8 @@ end;
 procedure TRtComboBox.DropDown;
 begin
   if not Enabled or (FDrop <> nil) then Exit;
-  // clic sur la liste fermee a l'instant par ce meme clic (perte du focus
-  // de la liste ouverte): bascule, pas de reouverture
+  // Le clic qui ferme la liste par perte de focus arrive ensuite ici: sans ce delai, il
+  // la rouvrirait aussitot.
   if (FDropClosedAt <> 0) and (GetTickCount64 - FDropClosedAt < 250) then Exit;
   if Assigned(FOnDropDown) then FOnDropDown(Self);
   if FItems.Count = 0 then Exit;
@@ -625,8 +581,8 @@ begin
   FDrop.Show;
   {$IFDEF LCLCocoa}
   AttachToParentWindow(FDrop, GetParentForm(Self));
-  // la selection posee avant la creation du handle est perdue par la
-  // TListBox de Cocoa: reposee une fois la liste affichee
+  // La TListBox de Cocoa perd la selection posee avant la creation du handle: on la repose
+  // une fois la liste affichee.
   FDrop.Refill;
   {$ENDIF}
   {$IFDEF WINDOWS}

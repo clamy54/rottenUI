@@ -1,12 +1,12 @@
-{ Champ de recherche du panneau lateral: TEdit sans bordure dans un pill dessine
-  a la main. TextHint natif est illisible sur fond sombre, d'ou une invite geree
-  en interne -- elle n'apparait jamais dans SearchText.
-
-  Copyright (C) 2024 - 2026 Cyril LAMY
-  SPDX-License-Identifier: GPL-3.0-or-later }
+// Copyright (C) 2024 - 2026 Cyril LAMY
+// SPDX-License-Identifier: GPL-3.0-or-later
 unit uSearchBox;
 
 {$mode objfpc}{$H+}
+
+// Champ de recherche du panneau lateral: un TEdit sans bordure dans une pilule dessinee
+// a la main. Le TextHint natif est illisible sur fond sombre, d'ou une invite maison qui
+// n'apparait jamais dans SearchText.
 
 interface
 
@@ -15,7 +15,6 @@ uses
   {$IFDEF LCLGtk2}, gtk2, gdk2, glib2{$ENDIF};
 
 type
-  // sbgSearch: loupe (filtrer, rechercher); sbgGoTo: fleche (aller a un DN)
   TSearchBoxGlyph = (sbgSearch, sbgGoTo);
 
   TRottenSearchBox = class(TCustomControl)
@@ -26,10 +25,10 @@ type
     FHintText: string;
     FEnabledLook: Boolean;
     FShowingHint: Boolean;
-    FInternalEdit: Boolean;   // nos ecritures de FEdit.Text ne notifient pas
+    FInternalEdit: Boolean;
     FClearHot: Boolean;
     {$IFDEF LCLGtk2}
-    // recolorer l'entry exige un handle realise: ApplyTheme est trop tot
+    // GTK2: recolorer l'entry exige un handle realise, et ApplyTheme passe trop tot.
     FGtkColorDone: Boolean;
     {$ENDIF}
     FOnSearchChange: TNotifyEvent;
@@ -67,19 +66,16 @@ type
     procedure ApplyTheme(ABg, AField, ABorder, ABorderFocus, AText, AHint,
       AIcon: TColor);
     procedure SetEnabledLook(AEnabled: Boolean);
-    // Vide le filtre SANS notifier: l'hote decide s'il reconstruit.
     procedure Clear;
     procedure FocusEdit;
     function CanFocusEdit: Boolean;
-    // ecrit le texte sans notifier OnSearchChange (reflet d'une selection)
     procedure SetText(const AText: string);
     procedure SelectAll;
-    function SearchText: string;   // '' quand seule l'invite est affichee
+    function SearchText: string;
 
     property HintText: string read FHintText write FHintText;
     property OnSearchChange: TNotifyEvent read FOnSearchChange write FOnSearchChange;
     property OnEscape: TNotifyEvent read FOnEscape write FOnEscape;
-    // Entree dans le champ
     property OnSubmit: TNotifyEvent read FOnSubmit write FOnSubmit;
     property Glyph: TSearchBoxGlyph read FGlyph write FGlyph;
   end;
@@ -88,7 +84,7 @@ implementation
 
 const
   MARGIN_H    = 6;
-  // plus serre sous GTK2, ou l'entry est plus haute et mangerait la bordure
+  // Plus serre sous GTK2: l'entry y est plus haute et mangerait la bordure.
   {$IFDEF LCLGtk2}
   MARGIN_V    = 4;
   {$ELSE}
@@ -111,14 +107,15 @@ begin
 end;
 
 {$IFDEF LCLGtk2}
-// Les themes GTK2 a moteur (Yaru) ignorent modify_base: d'ou un GtkStyle neuf.
+// Les themes GTK2 a moteur (Yaru) ignorent modify_base: on leur impose un GtkStyle neuf,
+// complet, sans rien leur demander.
 procedure ForceGtk2EntryColors(AEdit: TWinControl; ABase, AText: TColor);
   function GC(c: TColor): TGdkColor;
   var r: LongInt;
   begin
     r := ColorToRGB(c);
     Result.pixel := 0;
-    Result.red   := (r and $FF) * 257;         // 0..255 -> 0..65535
+    Result.red   := (r and $FF) * 257;
     Result.green := ((r shr 8) and $FF) * 257;
     Result.blue  := ((r shr 16) and $FF) * 257;
   end;
@@ -141,21 +138,20 @@ begin
     style^.text[st] := ct;
     style^.fg[st]   := ct;
   end;
-  // padding a zero: sinon l'entry depasse le pill et recouvre sa bordure
+  // Epaisseurs a zero, sinon l'entry deborde du pill et recouvre sa bordure.
   style^.xthickness := 0;
   style^.ythickness := 0;
   gtk_widget_set_style(w, style);
-  g_object_unref(style);   // le widget en detient desormais une reference
+  g_object_unref(style);   // le widget garde sa propre reference
   gtk_widget_queue_resize(w);
 end;
 {$ENDIF}
-
 
 constructor TRottenSearchBox.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   DoubleBuffered := True;
-  TabStop := False;             // c'est le TEdit interne qui prend le focus
+  TabStop := False;
   FHintText := 'Search…';
   FEnabledLook := False;
   FColBg := clBlack;
@@ -194,7 +190,6 @@ end;
 
 function TRottenSearchBox.HasText: Boolean;
 begin
-  // Trim comme SearchText: pas de croix d'effacement pour un filtre d'espaces
   Result := (not FShowingHint) and (Trim(FEdit.Text) <> '');
 end;
 
@@ -206,7 +201,8 @@ begin
   if FEdit = nil then Exit;
   f := FieldRect;
   {$IFDEF LCLGtk3}
-  // GTK3: hauteur minimale du theme
+  // GTK3 impose a l'entry la hauteur minimale de son theme et la laisse deborder du cadre.
+  // On la contraint. Elle boude, mais elle reste dedans.
   if f.Bottom - f.Top > 2 then
     FEdit.Constraints.MaxHeight := f.Bottom - f.Top - 2;
   {$ENDIF}
@@ -306,7 +302,6 @@ begin
   Canvas.Brush.Style := bsClear;
   if FGlyph = sbgGoTo then
   begin
-    // fleche vers la droite
     Canvas.Line(cx - 6, cy, cx + 5, cy);
     Canvas.Line(cx + 1, cy - 4, cx + 5, cy);
     Canvas.Line(cx + 1, cy + 4, cx + 5, cy);
@@ -348,7 +343,7 @@ var
   rad: Integer;
 begin
   {$IFDEF LCLGtk2}
-  // au premier Paint l'entry est realise: moment sur pour reposer son fond
+  // Au premier Paint l'entry est enfin realisee: seul moment sur pour reposer son fond.
   if (not FGtkColorDone) and FEdit.HandleAllocated then
   begin
     ForceGtk2EntryColors(FEdit, FColField, FColText);
@@ -362,9 +357,9 @@ begin
   Canvas.Pen.Style := psClear;
   Canvas.FillRect(ClientRect);
 
-  // RoundRect en un primitif: a la main, GTK2 decale les jonctions d'un pixel
+  // RoundRect en un seul primitif: assemble a la main, GTK2 decale les jonctions d'un pixel.
   f := FieldRect;
-  rad := f.Bottom - f.Top;      // RX=RY=hauteur => pilule
+  rad := f.Bottom - f.Top;
   Canvas.Brush.Color := FColField;
   Canvas.Brush.Style := bsSolid;
   Canvas.Pen.Style := psSolid;
@@ -406,7 +401,6 @@ begin
   if not FEnabledLook then Exit;
   if HasText and PtInRect(ClearRect, Point(X, Y)) then
   begin
-    // pas de FInternalEdit ici: effacer DOIT notifier, l'hote reconstruit
     FEdit.Text := '';
     FocusEdit;
     Exit;
@@ -438,7 +432,6 @@ begin
   Color := ABg;
   FEdit.Color := AField;
   {$IFDEF LCLGtk2}
-  // handle deja la = tout de suite, sinon le prochain Paint s'en charge
   FGtkColorDone := False;
   if FEdit.HandleAllocated then
   begin

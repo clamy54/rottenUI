@@ -4,10 +4,9 @@ unit uRtMessage;
 
 {$mode objfpc}{$H+}
 
-// Messages, questions et saisies courtes aux couleurs du theme de la coque.
-// Les boites natives (MessageDlg, QuestionDlg, InputQuery) restent claires
-// sur un theme sombre. Memes signatures et memes resultats que la LCL:
-// Echap rend mrCancel (callers: tout sauf mrYes/mrOk vaut refus).
+// Messages, questions et saisies courtes aux couleurs du theme: MessageDlg, QuestionDlg et
+// InputQuery restent obstinement clairs sur un theme sombre. Memes signatures que la LCL;
+// Echap rend mrCancel, et tout ce qui n'est pas mrYes ou mrOk vaut refus.
 
 interface
 
@@ -18,13 +17,11 @@ function RtMessageDlg(const ACaption, AMsg: string; ADlgType: TMsgDlgType;
   AButtons: TMsgDlgButtons; AHelpCtx: Longint = 0): TModalResult;
 
 type
-  // tests: remplace la boite de RtMessageDlg (question posee, reponse rendue)
   TRtMessageOverride = function(const ACaption, AMsg: string; ADlgType: TMsgDlgType): TModalResult;
 
 var
   RtMessageOverride: TRtMessageOverride = nil;
 
-// AButtons: paires (resultat, libelle), comme QuestionDlg
 function RtQuestionDlg(const ACaption, AMsg: string; ADlgType: TMsgDlgType;
   const AButtons: array of const; AHelpCtx: Longint = 0): TModalResult;
 function RtInputQuery(const ACaption, APrompt: string; var AValue: string): Boolean;
@@ -38,16 +35,14 @@ uses
 
 const
   MSG_WIDTH = 520;
-  // taille logique de l'icone d'etat (40 a 125 %, 48 a 150 %, 64 a 200 %)
   MSG_ICON = 32;
-  // cadre, barre de titre et marge de securite hors zone cliente
   MSG_FRAME = 120;
 
 type
   TRtMessageForm = class(TRtDialog)
   private
     FIcon: TRtIcon;
-    FMemo: TMemo;          // texte long: defilant, selectionnable, copiable
+    FMemo: TMemo;
     FDlgType: TMsgDlgType;
   protected
     procedure ApplyShellColors; override;
@@ -55,7 +50,6 @@ type
     constructor CreateMessage(const ACaption, AMsg: string; ADlgType: TMsgDlgType);
   end;
 
-// Icone du type de message; le texte reste seul porteur du sens
 function IconFor(ADlgType: TMsgDlgType): string;
 begin
   case ADlgType of
@@ -77,7 +71,6 @@ begin
   end;
 end;
 
-// hauteur du texte replie dans AWidth, police de la coque
 function WrappedHeight(AFont: TFont; const AText: string; AWidth: Integer): Integer;
 var
   bmp: Graphics.TBitmap;
@@ -107,15 +100,11 @@ end;
 
 constructor TRtMessageForm.CreateMessage(const ACaption, AMsg: string; ADlgType: TMsgDlgType);
 var
-  lbl: TLabel;
   textW, textH, px, maxH: Integer;
 begin
-  // proprietaire = fiche active: centrage sur elle, jamais liberee par elle
   inherited CreateDialog(Screen.ActiveCustomForm, ACaption, MSG_WIDTH, 200);
   PlaceOnScreen(Self);
   FDlgType := ADlgType;
-  // icone du type de message (erreur, avertissement, question, information)
-  // dans la couleur d'etat du theme
   FIcon := TRtIcon.Create(Self);
   FIcon.Parent := Body;
   FIcon.Align := alLeft;
@@ -126,8 +115,8 @@ begin
   textW := MSG_WIDTH - 2 * 8 - px - 14 - 2 * 4 - 8;
   textH := WrappedHeight(Font, AMsg, textW);
   if textH < px then textH := px;
-  // hauteur bornee a la zone de travail de l'ecran: au-dela, le texte
-  // defile dans une zone selectionnable, les boutons restent visibles (G17)
+  // Un message plus haut que l'ecran poussait les boutons hors champ, plus moyen de dire
+  // non. Au-dela de la zone de travail, le texte defile et les boutons restent visibles.
   maxH := Screen.WorkAreaHeight - (2 * 8 + 2 * 4 + 16 + 44) - MSG_FRAME;
   if maxH < 4 * px then maxH := 4 * px;
   if textH > maxH then
@@ -143,21 +132,14 @@ begin
     textH := maxH;
   end
   else
-  begin
-    lbl := MakeLabel(Body, AMsg, alClient);
-    lbl.WordWrap := True;
-    lbl.ShowAccelChar := False;
-  end;
-  // corps + marges + barre de boutons (44)
+    MakeDataLabel(Body, AMsg, alClient);
   ClientHeight := textH + 2 * 8 + 2 * 4 + 16 + 44;
 end;
 
 procedure TRtMessageForm.ApplyShellColors;
 begin
   inherited ApplyShellColors;
-  // couleur d'etat du theme courant
   FIcon.IconColor := StripColorFor(FDlgType);
-  // le texte long garde les couleurs du message, pas celles de l'editeur
   if FMemo <> nil then
   begin
     FMemo.Color := clAppBg;
@@ -212,7 +194,6 @@ type
   end;
   TBtnSpecs = array of TBtnSpec;
 
-// boutons de gauche a droite; defaut: OK, sinon Oui, sinon le premier
 function RunMessage(const ACaption, AMsg: string; ADlgType: TMsgDlgType;
   const ASpecs: TBtnSpecs): TModalResult;
 var
@@ -229,7 +210,6 @@ begin
       for i := 0 to High(ASpecs) do
         if ASpecs[i].Result = mrYes then begin def := i; Break; end;
     defBtn := nil;
-    // AddButton empile de droite a gauche: ajout du dernier au premier
     for i := High(ASpecs) downto 0 do
     begin
       b := f.AddButton(ASpecs[i].Caption, ASpecs[i].Result, i = def,
@@ -300,7 +280,7 @@ begin
       SetLength(specs, Length(specs) + 1);
       specs[High(specs)].Result := AButtons[i].VInteger;
       specs[High(specs)].Caption := '';
-      // libelle facultatif; 'IsDefault' / 'IsCancel' de la LCL ignores
+      // 'IsDefault' et 'IsCancel' de QuestionDlg ne sont pas des libelles: ignores.
       if (i < High(AButtons)) and VarRecText(AButtons[i + 1], s) then
       begin
         Inc(i);
@@ -324,7 +304,6 @@ end;
 function RtInputQuery(const ACaption, APrompt: string; var AValue: string): Boolean;
 var
   f: TRtDialog;
-  lbl: TLabel;
   row: TPanel;
   ed: TEdit;
   textH: Integer;
@@ -332,8 +311,7 @@ begin
   f := TRtDialog.CreateDialog(Screen.ActiveCustomForm, ACaption, MSG_WIDTH, 200);
   try
     PlaceOnScreen(f);
-    lbl := MakeLabel(f.Body, APrompt);
-    lbl.ShowAccelChar := False;
+    MakeDataLabel(f.Body, APrompt);
     row := MakePanel(f.Body, alTop, 34);
     StackTop(row);
     ed := TEdit.Create(row);

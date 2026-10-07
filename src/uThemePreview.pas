@@ -4,9 +4,9 @@ unit uThemePreview;
 
 {$mode objfpc}{$H+}
 
-// Apercu d'un theme sans l'appliquer: maquette reduite de la fenetre
-// (menus, panneau lateral, onglets, LDIF colore, differences, statut)
-// dessinee avec les couleurs et les fontes du theme choisi.
+// Apercu d'un theme sans l'appliquer: maquette reduite de la fenetre, dessinee avec les
+// couleurs et les fontes du theme choisi. Le 'modfy' de l'exemple LDIF est volontaire,
+// il faut bien une ligne fausse pour montrer la couleur des erreurs.
 
 interface
 
@@ -25,8 +25,6 @@ type
   public
     constructor Create(AOwner: TComponent); override;
     procedure ShowTheme(AIndex: Integer);
-    // hauteur qui loge tout le dessin (7 lignes d'editeur, legende, barres)
-    // dans les polices et tailles du theme affiche
     function PreferredHeight: Integer;
   end;
 
@@ -65,7 +63,6 @@ end;
 procedure TThemePreview.ShowTheme(AIndex: Integer);
 begin
   FValid := ThemePreview(AIndex, FColors, FUiFont, FEditorFont);
-  // polices du theme: la hauteur suit, rien n'est coupe ni superpose
   Height := PreferredHeight;
   Invalidate;
 end;
@@ -86,7 +83,6 @@ begin
   finally
     bmp.Free;
   end;
-  // cadre, menus, onglets, 7 lignes, ecart, legende, barre d'etat (Paint)
   Result := 2 + (uiH + 4) + (uiH + 8) + 4 + 7 * edH + 8 + uiH + 4 + (uiH + 4) + 4;
 end;
 
@@ -109,7 +105,6 @@ var
     Canvas.TextOut(AX, AY, S);
   end;
 
-  // segment de texte colore; renvoie l'abscisse suivante
   function Seg(AX, AY: Integer; const S: string; AColor: TColor): Integer;
   begin
     TextAt(AX, AY, S, AColor);
@@ -137,19 +132,15 @@ begin
   tabH := lineH + 8;
   sideW := r.Width * 30 div 100;
 
-  // cadre
   Fill(r, Col(ttBorder));
   r := Rect(r.Left + 1, r.Top + 1, r.Right - 1, r.Bottom - 1);
 
-  // barre de menus
   Fill(Rect(r.Left, r.Top, r.Right, r.Top + menuH), Col(ttMenuBg));
   TextAt(r.Left + 8, r.Top + 3, rsPvMenu, Col(ttMenuText));
 
-  // barre de statut
   Fill(Rect(r.Left, r.Bottom - statusH, r.Right, r.Bottom), Col(ttStatusBg));
   TextAt(r.Left + 8, r.Bottom - statusH + 3, rsPvStatus, Col(ttStatusText));
 
-  // panneau lateral: profil connecte, selectionne, ordinaire, en echec
   Fill(Rect(r.Left, r.Top + menuH, r.Left + sideW, r.Bottom - statusH), Col(ttSideBg));
   y := r.Top + menuH + 6;
   x := Seg(r.Left + 10, y, rsPvProfile1, Col(ttSideActive));
@@ -163,7 +154,6 @@ begin
   Inc(y, lineH + 2);
   TextAt(r.Left + 10, y, rsPvProfile4, Col(ttTabDead));
 
-  // onglets
   Fill(Rect(r.Left + sideW, r.Top + menuH, r.Right, r.Top + menuH + tabH), Col(ttTabStrip));
   x := r.Left + sideW + 6;
   y := r.Top + menuH + 4;
@@ -176,7 +166,6 @@ begin
   Fill(Rect(x, y, x + Canvas.TextWidth(rsPvTab2) + 20, r.Top + menuH + tabH), Col(ttTabInactive));
   TextAt(x + 10, y + 2, rsPvTab2, Col(ttTabInactiveText));
 
-  // editeur LDIF
   x := r.Left + sideW;
   y := r.Top + menuH + tabH;
   Fill(Rect(x, y, r.Right, r.Bottom - statusH), Col(ttEditorBg));
@@ -196,7 +185,6 @@ begin
   Seg(x, textY, 'uid=alice,ou=people,dc=example,dc=org', Col(ttEditorFg));
   x := r.Left + sideW + gutterW + 6;
   Inc(textY, lineH);
-  // ligne courante et selection
   Fill(Rect(x - 4, textY - 1, r.Right, textY + lineH - 1), Col(ttCurrentLine));
   x := Seg(x, textY, 'objectClass', Col(ttCodeKeyword));
   x := Seg(x, textY, ': ', Col(ttEditorFg));
@@ -224,7 +212,6 @@ begin
   Inc(textY, lineH);
   Seg(x, textY, 'changetype: modfy', Col(ttCodeInvalid));
 
-  // legende des differences (symbole et libelle, jamais la couleur seule)
   x := r.Left + sideW + 10;
   y := r.Bottom - statusH - lineH - 4;
   UseUiFont(-1);

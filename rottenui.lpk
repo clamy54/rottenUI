@@ -27,7 +27,7 @@
     <Description Value="RottenUI: themed LCL controls (message boxes, combo boxes, check boxes, buttons, lists, tab bar, menu bar, search box, scroll bar, dialogs) with embedded Monaspace and JetBrains Mono fonts, Tabler icons and themes."/>
     <License Value="GPL-3.0-or-later; embedded fonts under SIL OFL 1.1 and Tabler icons under MIT (assets/licenses)."/>
     <Version Major="1"/>
-    <Files Count="24">
+    <Files Count="32">
       <Item1>
         <Filename Value="src/uFontEmbed.pas"/>
         <UnitName Value="uFontEmbed"/>
@@ -124,6 +124,38 @@
         <Filename Value="src/uDocTabBar.pas"/>
         <UnitName Value="uDocTabBar"/>
       </Item24>
+      <Item25>
+        <Filename Value="src/uRtStatusBar.pas"/>
+        <UnitName Value="uRtStatusBar"/>
+      </Item25>
+      <Item26>
+        <Filename Value="src/uRtLogList.pas"/>
+        <UnitName Value="uRtLogList"/>
+      </Item26>
+      <Item27>
+        <Filename Value="src/uRtGauge.pas"/>
+        <UnitName Value="uRtGauge"/>
+      </Item27>
+      <Item28>
+        <Filename Value="src/uRtProgress.pas"/>
+        <UnitName Value="uRtProgress"/>
+      </Item28>
+      <Item29>
+        <Filename Value="src/uRtAbout.pas"/>
+        <UnitName Value="uRtAbout"/>
+      </Item29>
+      <Item30>
+        <Filename Value="src/uRtWizard.pas"/>
+        <UnitName Value="uRtWizard"/>
+      </Item30>
+      <Item31>
+        <Filename Value="src/uRtSecretEdit.pas"/>
+        <UnitName Value="uRtSecretEdit"/>
+      </Item31>
+      <Item32>
+        <Filename Value="src/uRtPassword.pas"/>
+        <UnitName Value="uRtPassword"/>
+      </Item32>
     </Files>
     <RequiredPkgs Count="1">
       <Item1>
