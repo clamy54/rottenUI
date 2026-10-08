@@ -32,6 +32,7 @@ Lazarus trunk (5 ou plus) ; GTK2 reste possible avec la 4.8.
 | `uRtWizard` | échafaudage d'assistant posé dans un `TRtDialog` : bandeau, étapes, pages, Back/Next, validation à chaque changement de page |
 | `uRtSecretEdit` | champ de saisie masqué à la main (`TRtSecretEdit`), sans champ sécurisé natif : presse-papiers et annulation fermés tant qu'il est masqué, menu contextuel réduit alors à « Paste », affichage en clair sur demande, tampon effacé sur demande et à la destruction |
 | `uRtPassword` | dialogue de mot de passe sur `TRtDialog` : un champ ou nouveau + confirmation, case « Show », refus affiché sans fermer (`OnValidate`), secret rendu en copie à effacer |
+| `uRtReport` | vue de rapport `TRtReportView` à poser dans une page d'onglet : barre de commandes, bilan et avertissement sur fond du thème, liste triable `TRtListGrid` ; l'application fournit boutons, textes et cellules |
 | `uThemedControls`, `uThemedSplitter`, `uNoticeBanner` | bouton, case, liste, onglets et séparateur dessinés ; bandeau d'avis |
 | `uSafeSave`, `uJsonGuard` | écriture atomique et lecture bornée de fichiers, garde JSON |
 
@@ -53,7 +54,7 @@ dialogue s'en tient à une seule.
 | Boutons | `TButton` natifs ; `TRtFlatButton` plat, à icône | `TThemedButton` dessiné (`Default`, `Cancel`, `ModalResult`) |
 | Case à cocher | `TRtCheckBox` : deux états, libellé sur plusieurs lignes | `TThemedCheck` : trois états (`AllowGrayed`) |
 | Liste déroulante | `TRtComboBox` : liste maison qui défile et se filtre, taillée pour des centaines d'éléments | `TThemedCombo` : s'ouvre en menu, pour une poignée de choix |
-| En plus | `TRtListGrid`, `TRtLogList`, `TRtStatusBar`, `TRtSegmented`, `TRtStepper`, `TPickDialog`, `TRtProgressDialog`, `TRtAboutDialog`, `TRtLicenseViewer`, `TRtWizard`, `TRtPasswordDialog` | `TThemedTabs` |
+| En plus | `TRtListGrid`, `TRtLogList`, `TRtStatusBar`, `TRtSegmented`, `TRtStepper`, `TPickDialog`, `TRtProgressDialog`, `TRtAboutDialog`, `TRtLicenseViewer`, `TRtWizard`, `TRtPasswordDialog`, `TRtReportView` | `TThemedTabs` |
 
 Écran neuf construit par code, dense en données ou en longues listes : « Rt ». Formulaire
 déjà posé au pixel, ou contrôle natif à remplacer sans toucher au reste : « Themed ».

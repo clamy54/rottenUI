@@ -12,7 +12,8 @@ uses
   uRtCombo, uRtList, uRtMessage, uSafeSave, uSearchBox, uTabBar, uTheme,
   uThemeData, uThemeLoad, uThemePreview, uTreeScrollBar, uUiKit, uNoticeBanner,
   uThemedControls, uThemedSplitter, uDocTabBar, uRtStatusBar, uRtLogList,
-  uRtGauge, uRtProgress, uRtAbout, uRtWizard, uRtSecretEdit, uRtPassword;
+  uRtGauge, uRtProgress, uRtAbout, uRtWizard, uRtSecretEdit, uRtPassword,
+  uRtReport;
 
 implementation
 
