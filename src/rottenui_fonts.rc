@@ -23,5 +23,7 @@ JETBRAINSMONO_REGULAR RCDATA "../assets/fonts/JetBrainsMonoNLNerdFontMono-Regula
 JETBRAINSMONO_BOLD RCDATA "../assets/fonts/JetBrainsMonoNLNerdFontMono-Bold.ttf"
 JETBRAINSMONO_ITALIC RCDATA "../assets/fonts/JetBrainsMonoNLNerdFontMono-Italic.ttf"
 JETBRAINSMONO_BOLDITALIC RCDATA "../assets/fonts/JetBrainsMonoNLNerdFontMono-BoldItalic.ttf"
+HACK_REGULAR RCDATA "../assets/fonts/HackNerdFontMono-Regular.ttf"
 LICENSE_MONASPACE_OFL_1_1 RCDATA "../assets/licenses/Monaspace-OFL-1.1.txt"
 LICENSE_JETBRAINSMONO_OFL_1_1 RCDATA "../assets/licenses/JetBrainsMono-OFL-1.1.txt"
+LICENSE_HACK_MIT_BITSTREAM_VERA RCDATA "../assets/licenses/Hack-MIT-Bitstream-Vera.txt"

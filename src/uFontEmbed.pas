@@ -4,9 +4,10 @@ unit uFontEmbed;
 
 {$mode objfpc}{$H+}
 
-// Polices embarquees (Monaspace Frozen, JetBrainsMono NL Nerd Font Mono), enregistrees
-// pour ce seul process depuis les ressources du binaire. Pas de dossier fonts/ externe:
-// si ca rate, le widgetset garde sa fonte systeme et l'echec est signale. Aucune LCL ici.
+// Polices embarquees (Monaspace Frozen, JetBrainsMono NL Nerd Font Mono, Hack Nerd Font
+// Mono), enregistrees pour ce seul process depuis les ressources du binaire. Pas de dossier
+// fonts/ externe: si ca rate, le widgetset garde sa fonte systeme et l'echec est signale.
+// Aucune LCL ici. Notices de licence: assets/licenses, embarquees en LICENSE_*.
 
 interface
 
@@ -45,40 +46,44 @@ uses
 {$R rottenui_fonts.res}
 
 const
-  FontRes: array[0..23] of string = (
+  FontRes: array[0..24] of string = (
     'NEON_REGULAR', 'NEON_BOLD', 'NEON_ITALIC', 'NEON_BOLDITALIC',
     'ARGON_REGULAR', 'ARGON_BOLD', 'ARGON_ITALIC', 'ARGON_BOLDITALIC',
     'XENON_REGULAR', 'XENON_BOLD', 'XENON_ITALIC', 'XENON_BOLDITALIC',
     'RADON_REGULAR', 'RADON_BOLD', 'RADON_ITALIC', 'RADON_BOLDITALIC',
     'KRYPTON_REGULAR', 'KRYPTON_BOLD', 'KRYPTON_ITALIC', 'KRYPTON_BOLDITALIC',
     'JETBRAINSMONO_REGULAR', 'JETBRAINSMONO_BOLD', 'JETBRAINSMONO_ITALIC',
-    'JETBRAINSMONO_BOLDITALIC');
-  ResFam: array[0..23] of Integer = (
-    0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5);
-  ResStyle: array[0..23] of Integer = (
-    0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3);
+    'JETBRAINSMONO_BOLDITALIC',
+    'HACK_REGULAR');
+  ResFam: array[0..24] of Integer = (
+    0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6);
+  ResStyle: array[0..24] of Integer = (
+    0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0);
   FontFamily = 'Monaspace Neon Frozen';
 
   // Liste blanche: un theme ou des prefs ne choisissent que parmi ces familles.
-  FamKeys: array[0..5] of string =
-    ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono');
+  FamKeys: array[0..6] of string =
+    ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono', 'Hack');
   // Noms exacts de la table name des TTF: CreateFont ne reconnait rien d'autre.
-  FamFull: array[0..5] of string = (
+  FamFull: array[0..6] of string = (
     'Monaspace Neon Frozen', 'Monaspace Argon Frozen', 'Monaspace Xenon Frozen',
-    'Monaspace Radon Frozen', 'Monaspace Krypton Frozen', 'JetBrainsMonoNL NFM');
-  FamLabel: array[0..5] of string = (
+    'Monaspace Radon Frozen', 'Monaspace Krypton Frozen', 'JetBrainsMonoNL NFM',
+    'Hack Nerd Font Mono');
+  FamLabel: array[0..6] of string = (
     'Monaspace Neon Frozen', 'Monaspace Argon Frozen', 'Monaspace Xenon Frozen',
     'Monaspace Radon Frozen', 'Monaspace Krypton Frozen',
-    'JetBrains Mono NL Nerd Font');
-  FamFile: array[0..5] of string = (
+    'JetBrains Mono NL Nerd Font', 'Hack Nerd Font');
+  FamFile: array[0..6] of string = (
     'MonaspaceNeonFrozen-', 'MonaspaceArgonFrozen-', 'MonaspaceXenonFrozen-',
     'MonaspaceRadonFrozen-', 'MonaspaceKryptonFrozen-',
-    'JetBrainsMonoNLNerdFontMono-');
-  FamStyleCount: array[0..5] of Integer = (4, 4, 4, 4, 4, 4);
+    'JetBrainsMonoNLNerdFontMono-', 'HackNerdFontMono-');
+  // Hack n'est livree qu'en Regular: son gras et son italique sont synthetises par le
+  // systeme, pas tires d'un fichier.
+  FamStyleCount: array[0..6] of Integer = (4, 4, 4, 4, 4, 4, 1);
   StyleSuffix: array[0..3] of string = ('Regular', 'Bold', 'Italic', 'BoldItalic');
 
 var
-  FamStyleLoaded: array[0..5, 0..3] of Boolean;
+  FamStyleLoaded: array[0..6, 0..3] of Boolean;
   FontsLoaded: Boolean;
 
 // Famille incomplete, famille refusee: CreateFont par nom retomberait en silence sur

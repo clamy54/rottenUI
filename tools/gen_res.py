@@ -32,9 +32,13 @@ FONTS = [
     ("NEON", "MonaspaceNeonFrozen"), ("ARGON", "MonaspaceArgonFrozen"),
     ("XENON", "MonaspaceXenonFrozen"), ("RADON", "MonaspaceRadonFrozen"),
     ("KRYPTON", "MonaspaceKryptonFrozen"), ("JETBRAINSMONO", "JetBrainsMonoNLNerdFontMono"),
+    ("HACK", "HackNerdFontMono"),
 ]
 STYLES = [("REGULAR", "Regular"), ("BOLD", "Bold"), ("ITALIC", "Italic"), ("BOLDITALIC", "BoldItalic")]
-FONT_LICENSES = ["Monaspace-OFL-1.1.txt", "JetBrainsMono-OFL-1.1.txt"]
+# Familles livrees sans le jeu complet de styles (FamStyleCount dans uFontEmbed).
+FONT_STYLES = {"HACK": STYLES[:1]}
+FONT_LICENSES = ["Monaspace-OFL-1.1.txt", "JetBrainsMono-OFL-1.1.txt",
+                 "Hack-MIT-Bitstream-Vera.txt"]
 ICON_LICENSES = ["Tabler-MIT.txt"]
 
 
@@ -47,7 +51,7 @@ def license_entry(fname):
 def fonts():
     res = []
     for key, prefix in FONTS:
-        for skey, sfile in STYLES:
+        for skey, sfile in FONT_STYLES.get(key, STYLES):
             res.append(("%s_%s" % (key, skey), "fonts/%s-%s.ttf" % (prefix, sfile)))
     return res + [license_entry(f) for f in FONT_LICENSES]
 

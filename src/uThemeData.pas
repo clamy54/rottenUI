@@ -80,8 +80,8 @@ const
     'findToggleOnText', 'findToggleOff', 'findToggleOffText', 'sideHeader',
     'codeConstant', 'codeOperator');
 
-  FONT_FAMILY_KEYS: array[0..5] of string =
-    ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono');
+  FONT_FAMILY_KEYS: array[0..6] of string =
+    ('Neon', 'Argon', 'Xenon', 'Radon', 'Krypton', 'JetBrainsMono', 'Hack');
 
 function RgbToBgr(ARgb: LongWord): LongInt;
 function BgrToRgb(ABgr: LongInt): LongWord;

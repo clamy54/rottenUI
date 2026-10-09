@@ -5,8 +5,11 @@ contrôles LCL thémés, fontes, icônes et thèmes **embarqués dans les unité
 programme qui utilise le kit n'a aucune ressource à déclarer dans son projet.
 
 Licence : GPL-3.0-or-later (`LICENSE`). Fontes Monaspace et JetBrains Mono : SIL OFL 1.1 ;
-icônes Tabler : MIT. Leurs notices sont dans `assets/licenses/` et embarquées avec elles
-(ressources `LICENSE_MONASPACE_OFL_1_1`, `LICENSE_JETBRAINSMONO_OFL_1_1`, `LICENSE_TABLER_MIT`).
+fonte Hack : MIT et Bitstream Vera License ; icônes Tabler : MIT. Leurs notices sont dans
+`assets/licenses/` et embarquées avec elles (ressources `LICENSE_MONASPACE_OFL_1_1`,
+`LICENSE_JETBRAINSMONO_OFL_1_1`, `LICENSE_HACK_MIT_BITSTREAM_VERA`, `LICENSE_TABLER_MIT`).
+Une application qui distribue le kit doit donner ces notices à lire : `RtShowLicenses`
+(`uRtAbout`) les affiche depuis les ressources du binaire.
 
 Chaîne de compilation : FPC 3.2.2 / Lazarus 4.8. Sous Linux, le widgetset GTK3 demande
 Lazarus trunk (5 ou plus) ; GTK2 reste possible avec la 4.8.
