@@ -204,7 +204,7 @@ procedure TRSMenuRenderer.DrawItem(Sender: TObject; ACanvas: TCanvas;
 var
   mi: TMenuItem;
   ty: Integer;
-  {$IFDEF LCLGtk3}cy: Integer;{$ENDIF}
+  {$IF DEFINED(LCLGtk3) or DEFINED(LCLWin32)}cy: Integer;{$ENDIF}
   sc: string;
 begin
   mi := TMenuItem(Sender);
@@ -249,9 +249,11 @@ begin
     ACanvas.TextOut(ARect.Right - ACanvas.TextWidth(sc) - 16, ty, sc);
   end;
   ACanvas.Brush.Style := bsSolid;
-  {$IFDEF LCLGtk3}
-  // GTK3 ne dessine pas la fleche de sous-menu sur un item owner-draw. On la dessine,
-  // sinon personne ne devine qu'il y a une suite.
+  {$IF DEFINED(LCLGtk3) or DEFINED(LCLWin32)}
+  // GTK3 ne dessine pas la fleche de sous-menu sur un item owner-draw; Windows la dessine
+  // mais avec les couleurs systeme, hors theme (noire sur fond sombre, blanche au survol).
+  // Dans les deux cas on la trace nous-memes, de la couleur du texte. Le fond de l'item est
+  // deja rempli plus haut, ce qui recouvre la fleche native.
   if mi.Count > 0 then
   begin
     if mi.Enabled then ACanvas.Brush.Color := clMenuText
