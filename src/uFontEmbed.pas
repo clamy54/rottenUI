@@ -46,7 +46,7 @@ uses
 {$R rottenui_fonts.res}
 
 const
-  FontRes: array[0..24] of string = (
+  FontRes: array[0..27] of string = (
     'NEON_REGULAR', 'NEON_BOLD', 'NEON_ITALIC', 'NEON_BOLDITALIC',
     'ARGON_REGULAR', 'ARGON_BOLD', 'ARGON_ITALIC', 'ARGON_BOLDITALIC',
     'XENON_REGULAR', 'XENON_BOLD', 'XENON_ITALIC', 'XENON_BOLDITALIC',
@@ -54,11 +54,13 @@ const
     'KRYPTON_REGULAR', 'KRYPTON_BOLD', 'KRYPTON_ITALIC', 'KRYPTON_BOLDITALIC',
     'JETBRAINSMONO_REGULAR', 'JETBRAINSMONO_BOLD', 'JETBRAINSMONO_ITALIC',
     'JETBRAINSMONO_BOLDITALIC',
-    'HACK_REGULAR');
-  ResFam: array[0..24] of Integer = (
-    0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6);
-  ResStyle: array[0..24] of Integer = (
-    0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0);
+    'HACK_REGULAR', 'HACK_BOLD', 'HACK_ITALIC', 'HACK_BOLDITALIC');
+  ResFam: array[0..27] of Integer = (
+    0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5,
+    6, 6, 6, 6);
+  ResStyle: array[0..27] of Integer = (
+    0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+    0, 1, 2, 3);
   FontFamily = 'Monaspace Neon Frozen';
 
   // Liste blanche: un theme ou des prefs ne choisissent que parmi ces familles.
@@ -77,9 +79,7 @@ const
     'MonaspaceNeonFrozen-', 'MonaspaceArgonFrozen-', 'MonaspaceXenonFrozen-',
     'MonaspaceRadonFrozen-', 'MonaspaceKryptonFrozen-',
     'JetBrainsMonoNLNerdFontMono-', 'HackNerdFontMono-');
-  // Hack n'est livree qu'en Regular: son gras et son italique sont synthetises par le
-  // systeme, pas tires d'un fichier.
-  FamStyleCount: array[0..6] of Integer = (4, 4, 4, 4, 4, 4, 1);
+  FamStyleCount: array[0..6] of Integer = (4, 4, 4, 4, 4, 4, 4);
   StyleSuffix: array[0..3] of string = ('Regular', 'Bold', 'Italic', 'BoldItalic');
 
 var
