@@ -56,6 +56,7 @@ procedure AddEditCommands(AMenu: TPopupMenu; AEdit: TCustomEdit);
 implementation
 
 uses
+  {$IFDEF LCLWin32}LCLIntf,{$ENDIF}
   uGtk3Style;
 
 type
@@ -252,8 +253,7 @@ begin
   {$IF DEFINED(LCLGtk3) or DEFINED(LCLWin32)}
   // GTK3 ne dessine pas la fleche de sous-menu sur un item owner-draw; Windows la dessine
   // mais avec les couleurs systeme, hors theme (noire sur fond sombre, blanche au survol).
-  // Dans les deux cas on la trace nous-memes, de la couleur du texte. Le fond de l'item est
-  // deja rempli plus haut, ce qui recouvre la fleche native.
+  // Dans les deux cas on la trace nous-memes, de la couleur du texte.
   if mi.Count > 0 then
   begin
     if mi.Enabled then ACanvas.Brush.Color := clMenuText
@@ -262,6 +262,12 @@ begin
     cy := (ARect.Top + ARect.Bottom) div 2;
     ACanvas.Polygon([Point(ARect.Right - 16, cy - 4), Point(ARect.Right - 12, cy),
       Point(ARect.Right - 16, cy + 4)]);
+    {$IFDEF LCLWin32}
+    // Windows trace SA fleche APRES nous: remplir le fond avant ne la recouvre pas.
+    // La ligne sort de la zone de dessin, il n'a plus ou la poser.
+    ExcludeClipRect(ACanvas.Handle, ARect.Left, ARect.Top, ARect.Right,
+      ARect.Bottom);
+    {$ENDIF}
   end;
   {$ENDIF}
 end;
