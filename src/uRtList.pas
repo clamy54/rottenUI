@@ -44,6 +44,7 @@ type
     function DataIndex(ADisplay: Integer): Integer;
     function DisplayIndex(AData: Integer): Integer;
     procedure ApplySort;
+    procedure ApplySortKeeping(ASel: Integer);
     procedure SetCount(AValue: Integer);
     procedure SetFillWidth(AValue: Boolean);
     procedure FitColumns;
@@ -306,13 +307,20 @@ begin
 end;
 
 procedure TRtListGrid.SetCount(AValue: Integer);
+var
+  sel: Integer;
 begin
   if AValue < 0 then AValue := 0;
+  // L'element suivi se lit avant d'oublier l'ordre de tri: apres, l'index lu serait celui de
+  // l'affichage, et la surbrillance sauterait sur un voisin a chaque lot de resultats.
+  sel := ItemIndex;
   FCount := AValue;
   FOrder := nil;
   FPlace := nil;
+  // Liste videe ou raccourcie sous l'element: le prochain choix de la meme rangee est un vrai choix.
+  if (FCount = 0) or (FLastSelected >= FCount) then FLastSelected := -1;
   RowCount := FCount + 1;
-  if FSortCol >= 0 then ApplySort;
+  if FSortCol >= 0 then ApplySortKeeping(sel);
   Invalidate;
 end;
 
@@ -347,13 +355,16 @@ begin
 end;
 
 procedure TRtListGrid.ApplySort;
+begin
+  ApplySortKeeping(ItemIndex);
+end;
+
+procedure TRtListGrid.ApplySortKeeping(ASel: Integer);
 var
   keys: array of string;
   src, tmp: array of Integer;
   i, n, span, lo, mid, hi, a, b, k, c: Integer;
-  sel: Integer;
 begin
-  sel := ItemIndex;
   FOrder := nil;
   FPlace := nil;
   if (FSortCol >= 0) and (FCount > 1) then
@@ -421,8 +432,8 @@ begin
     for i := 0 to n - 1 do
       FPlace[FOrder[i]] := i;
   end;
-  if (sel >= 0) and (sel < FCount) then
-    Row := DisplayIndex(sel) + 1;
+  if (ASel >= 0) and (ASel < FCount) then
+    Row := DisplayIndex(ASel) + 1;
   Invalidate;
 end;
 

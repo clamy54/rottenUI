@@ -547,6 +547,9 @@ var
 begin
   AClose := False;
   Result := -1;
+  // Les cases datent du dernier dessin: une page fermee depuis y serait encore, et un second
+  // clic rapide la passerait, morte, a qui la ferme.
+  if HandleAllocated then BuildLayout;
   for i := 0 to High(FSlots) do
     if (X >= FSlots[i].Full.Left) and (X < FSlots[i].Full.Right)
        and (X >= FTabsLeft) and (X < FTabsRight) then
@@ -608,6 +611,7 @@ var
   i, cx: Integer;
 begin
   Result := nil;
+  if HandleAllocated then BuildLayout;
   for i := 0 to High(FSlots) do
   begin
     cx := (FSlots[i].Full.Left + FSlots[i].Full.Right) div 2;
