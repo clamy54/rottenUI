@@ -13,7 +13,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Forms, StdCtrls, ExtCtrls, Graphics, ComCtrls, Grids,
-  Buttons, Spin, LCLType, uTheme, uRtCheck, uRtCombo, uRtSecretEdit;
+  Buttons, Spin, LCLType, uTheme, uRtCheck, uRtCombo, uRtSecretEdit, uTreeScrollBar;
 
 type
   // En-tete d'onglets dessine pour un TPageControl sans onglets natifs: ceux de Win32
@@ -39,13 +39,70 @@ type
     procedure Resize; override;
   end;
 
-  // Zone defilante aux couleurs du theme. Windows oublie le mode sombre des barres a
-  // chaque recreation du handle: il est repose a chaque fois.
-  TRtScrollBox = class(TScrollBox)
+  TRtScrollBox = class;
+
+  // Ce que l'application utilisait des barres d'un TScrollBox. Seule la verticale defile.
+  TRtScrollBarInfo = class
+  private
+    FBox: TRtScrollBox;
+    FVertical: Boolean;
+    FIncrement: Integer;
+    FTracking, FVisible: Boolean;
+    function GetPosition: Integer;
+    procedure SetPosition(AValue: Integer);
+    function GetRange: Integer;
+    function GetPage: Integer;
+  public
+    constructor Create(ABox: TRtScrollBox; AVertical: Boolean);
+    property Position: Integer read GetPosition write SetPosition;
+    property Range: Integer read GetRange;
+    property Page: Integer read GetPage;
+    property Increment: Integer read FIncrement write FIncrement;
+    property Tracking: Boolean read FTracking write FTracking;
+    property Visible: Boolean read FVisible write FVisible;
+  end;
+
+  // Zone defilante sans TScrollBox natif: un panneau de contenu a hauteur automatique
+  // glisse dans une fenetre de clip, la barre est celle de l'arbre. Le TScrollBox de
+  // GTK3 perd le fil entre sa barre et son contenu des qu'un enfant est cree en cours
+  // de defilement, et ses barres ignorent le theme partout.
+  TRtScrollBox = class(TCustomControl, IThemedScrollTarget)
+  private
+    FView: TPanel;
+    FContent: TPanel;
+    FBar: TTreeScrollBar;
+    FVert, FHorz: TRtScrollBarInfo;
+    FPos: Integer;
+    FInLayout: Boolean;
+    FGlide: TTimer;
+    FGlideTarget: Integer;
+    FGliding: Boolean;
+    FOnViewChanged: TNotifyEvent;
+    function MaxPos: Integer;
+    procedure SetPos(AValue: Integer);
+    procedure GlideStop;
+    procedure GlideTick(Sender: TObject);
+    procedure Relayout;
   protected
     procedure CreateWnd; override;
+    procedure Resize; override;
+    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
   public
     constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    procedure ScrollInView(AControl: TControl);
+    procedure ApplyTheme;
+    function ScrollViewportHeight: Integer;
+    function ScrollMaxTop: Integer;
+    function ScrollGetTop: Integer;
+    procedure ScrollSetTop(AValue: Integer);
+    procedure ScrollAnimateBy(ADelta: Integer);
+    procedure ScrollWheelBy(AWheelDelta: Integer);
+    procedure SetOnScrollViewChanged(AHandler: TNotifyEvent);
+    property Content: TPanel read FContent;
+    property VertScrollBar: TRtScrollBarInfo read FVert;
+    property HorzScrollBar: TRtScrollBarInfo read FHorz;
+    property OnMouseWheel;
   end;
 
 const
@@ -822,17 +879,248 @@ begin
   Result.Value := AValue;
 end;
 
+type
+  // Les panneaux internes: la molette au-dessus d'eux revient a la boite, et le contenu
+  // signale ses changements de hauteur.
+  TRtScrollPane = class(TPanel)
+  protected
+    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
+    procedure Resize; override;
+  end;
+
+const
+  SCROLL_GLIDE_MS = 15;
+
+function TRtScrollPane.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
+begin
+  Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);
+  if not Result and (Owner is TRtScrollBox) then
+  begin
+    TRtScrollBox(Owner).ScrollWheelBy(WheelDelta);
+    Result := True;
+  end;
+end;
+
+procedure TRtScrollPane.Resize;
+begin
+  inherited Resize;
+  if Owner is TRtScrollBox then TRtScrollBox(Owner).Relayout;
+end;
+
+constructor TRtScrollBarInfo.Create(ABox: TRtScrollBox; AVertical: Boolean);
+begin
+  inherited Create;
+  FBox := ABox;
+  FVertical := AVertical;
+  FIncrement := 20;
+  FVisible := AVertical;
+end;
+
+function TRtScrollBarInfo.GetPosition: Integer;
+begin
+  if FVertical then Result := FBox.FPos else Result := 0;
+end;
+
+procedure TRtScrollBarInfo.SetPosition(AValue: Integer);
+begin
+  if FVertical then FBox.ScrollSetTop(AValue);
+end;
+
+function TRtScrollBarInfo.GetRange: Integer;
+begin
+  if FVertical then Result := FBox.FContent.Height else Result := 0;
+end;
+
+function TRtScrollBarInfo.GetPage: Integer;
+begin
+  if FVertical then Result := FBox.FView.ClientHeight else Result := 0;
+end;
+
 constructor TRtScrollBox.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  BorderStyle := bsNone;
   Color := clAppBg;
+  FVert := TRtScrollBarInfo.Create(Self, True);
+  FHorz := TRtScrollBarInfo.Create(Self, False);
+  FBar := TTreeScrollBar.Create(Self);
+  FBar.Parent := Self;
+  FBar.Align := alRight;
+  FBar.Width := 12;
+  FBar.Visible := False;
+  FView := TRtScrollPane.Create(Self);
+  FView.Parent := Self;
+  FView.Align := alClient;
+  FView.BevelOuter := bvNone;
+  FView.Caption := '';
+  FView.ParentColor := True;
+  FContent := TRtScrollPane.Create(Self);
+  FContent.Parent := FView;
+  FContent.BevelOuter := bvNone;
+  FContent.Caption := '';
+  FContent.ParentColor := True;
+  FContent.SetBounds(0, 0, FView.ClientWidth, 0);
+  FContent.Anchors := [akLeft, akTop, akRight];
+  FContent.AutoSize := True;
+  FBar.Bind(Self);
+  ApplyTheme;
+end;
+
+destructor TRtScrollBox.Destroy;
+begin
+  FVert.Free;
+  FHorz.Free;
+  inherited Destroy;
+end;
+
+procedure TRtScrollBox.ApplyTheme;
+begin
+  FBar.ApplyTheme(Color, BlendColor(clAppFg, Color, 22), BlendColor(clAppFg, Color, 42));
+end;
+
+function TRtScrollBox.MaxPos: Integer;
+begin
+  Result := FContent.Height - FView.ClientHeight;
+  if Result < 0 then Result := 0;
+end;
+
+procedure TRtScrollBox.SetPos(AValue: Integer);
+begin
+  if AValue > MaxPos then AValue := MaxPos;
+  if AValue < 0 then AValue := 0;
+  if AValue = FPos then Exit;
+  FPos := AValue;
+  FContent.Top := -FPos;
+  if Assigned(FOnViewChanged) then FOnViewChanged(Self);
+end;
+
+procedure TRtScrollBox.Relayout;
+begin
+  if FInLayout or (FContent = nil) or (csDestroying in ComponentState) then Exit;
+  FInLayout := True;
+  try
+    FBar.Visible := FContent.Height > ClientHeight;
+    if FPos > MaxPos then SetPos(MaxPos);
+    FContent.SetBounds(0, -FPos, FView.ClientWidth, FContent.Height);
+    if Assigned(FOnViewChanged) then FOnViewChanged(Self);
+  finally
+    FInLayout := False;
+  end;
 end;
 
 procedure TRtScrollBox.CreateWnd;
 begin
   inherited CreateWnd;
-  ApplyNativeDarkMode(Self);
+  Gtk3CaptureWheel(Self);
+end;
+
+procedure TRtScrollBox.Resize;
+begin
+  inherited Resize;
+  Relayout;
+end;
+
+function TRtScrollBox.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
+begin
+  Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);
+  if not Result then
+  begin
+    ScrollWheelBy(WheelDelta);
+    Result := True;
+  end;
+end;
+
+procedure TRtScrollBox.ScrollInView(AControl: TControl);
+var
+  y0, y1: Integer;
+  p: TWinControl;
+begin
+  if AControl = nil then Exit;
+  y0 := AControl.Top;
+  p := AControl.Parent;
+  while (p <> nil) and (p <> FContent) do
+  begin
+    Inc(y0, p.Top);
+    p := p.Parent;
+  end;
+  if p = nil then Exit;
+  y1 := y0 + AControl.Height;
+  GlideStop;
+  if y0 < FPos then SetPos(y0)
+  else if y1 > FPos + FView.ClientHeight then SetPos(y1 - FView.ClientHeight);
+end;
+
+procedure TRtScrollBox.GlideStop;
+begin
+  FGliding := False;
+  if FGlide <> nil then FGlide.Enabled := False;
+end;
+
+procedure TRtScrollBox.GlideTick(Sender: TObject);
+var
+  cur, dist, step: Integer;
+begin
+  cur := FPos;
+  dist := FGlideTarget - cur;
+  if dist = 0 then
+  begin
+    GlideStop;
+    Exit;
+  end;
+  step := dist div 3;
+  if step = 0 then
+    if dist > 0 then step := 1 else step := -1;
+  SetPos(cur + step);
+  if FPos = cur then GlideStop;
+end;
+
+function TRtScrollBox.ScrollViewportHeight: Integer;
+begin
+  Result := FView.ClientHeight;
+end;
+
+function TRtScrollBox.ScrollMaxTop: Integer;
+begin
+  Result := MaxPos;
+end;
+
+function TRtScrollBox.ScrollGetTop: Integer;
+begin
+  Result := FPos;
+end;
+
+procedure TRtScrollBox.ScrollSetTop(AValue: Integer);
+begin
+  GlideStop;
+  SetPos(AValue);
+end;
+
+procedure TRtScrollBox.ScrollAnimateBy(ADelta: Integer);
+var
+  target: Integer;
+begin
+  if ADelta = 0 then Exit;
+  if FGliding then target := FGlideTarget + ADelta else target := FPos + ADelta;
+  if target < 0 then target := 0;
+  if target > MaxPos then target := MaxPos;
+  FGlideTarget := target;
+  if FGlide = nil then
+  begin
+    FGlide := TTimer.Create(Self);
+    FGlide.Interval := SCROLL_GLIDE_MS;
+    FGlide.OnTimer := @GlideTick;
+  end;
+  FGliding := True;
+  FGlide.Enabled := True;
+end;
+
+procedure TRtScrollBox.ScrollWheelBy(AWheelDelta: Integer);
+begin
+  ScrollAnimateBy(-((AWheelDelta * Mouse.WheelScrollLines * FVert.Increment) div 120));
+end;
+
+procedure TRtScrollBox.SetOnScrollViewChanged(AHandler: TNotifyEvent);
+begin
+  FOnViewChanged := AHandler;
 end;
 
 function MakeScrollArea(AParent: TWinControl; out AContent: TPanel; AAlign: TAlign): TRtScrollBox;
@@ -840,13 +1128,7 @@ begin
   Result := TRtScrollBox.Create(AParent);
   Result.Parent := AParent;
   Result.Align := AAlign;
-  Result.HorzScrollBar.Visible := False;
-  Result.VertScrollBar.Tracking := True;
-  // Un seul enfant a hauteur automatique, la boite ne fait que defiler. Des dizaines de
-  // lignes posees directement dedans font boucler Cocoa (InvalidatePreferredSize loop
-  // detected), qui recalcule la plage de defilement jusqu'a la fin des temps.
-  AContent := MakePanel(Result, alTop);
-  AContent.AutoSize := True;
+  AContent := Result.Content;
 end;
 
 function RowLabel(ARow: TWinControl): TLabel;
@@ -1063,6 +1345,12 @@ begin
   begin
     if not TCustomPanel(AControl).ParentColor then
       AControl.Color := clAppBg;
+  end
+  else if AControl is TRtScrollBox then
+  begin
+    if not TRtScrollBox(AControl).ParentColor then
+      AControl.Color := clAppBg;
+    TRtScrollBox(AControl).ApplyTheme;
   end
   else if AControl is TScrollBox then
   begin
