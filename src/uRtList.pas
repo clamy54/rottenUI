@@ -78,7 +78,7 @@ type
     procedure Click; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure HeaderClick(IsColumn: Boolean; index: Integer); override;
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -288,16 +288,21 @@ end;
 
 procedure TRtListGrid.ShowColumnMenu(X, Y: Integer);
 var
-  c: Integer;
+  c, shown: Integer;
   mi: TMenuItem;
 begin
   if FColMenu = nil then FColMenu := TPopupMenu.Create(Self);
+  shown := 0;
+  for c := 0 to FCaptions.Count - 1 do
+    if ColumnVisible[c] then Inc(shown);
   FColMenu.Items.Clear;
   for c := 0 to FCaptions.Count - 1 do
   begin
     mi := TMenuItem.Create(FColMenu);
     mi.Caption := FCaptions[c];
     mi.Checked := ColumnVisible[c];
+    // The last column shown stays: its item says so by being greyed.
+    mi.Enabled := not (mi.Checked and (shown <= 1));
     mi.Tag := c;
     mi.OnClick := @ColumnItemClick;
     FColMenu.Items.Add(mi);
@@ -306,18 +311,20 @@ begin
   FColMenu.PopUp(X, Y);
 end;
 
-procedure TRtListGrid.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+{ The context menu on the header: the columns to show, the grid's own
+  popup menu staying for the rows (the event marked handled). }
+procedure TRtListGrid.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
 var
   p: TPoint;
 begin
-  // A right click on the header: the columns to show.
-  if (Button = mbRight) and FColumnMenu and FShowHeader and (Y < RowHeights[0]) then
+  if FColumnMenu and FShowHeader and (MousePos.Y >= 0) and (MousePos.Y < RowHeights[0]) then
   begin
-    p := ClientToScreen(Point(X, Y));
+    p := ClientToScreen(MousePos);
     ShowColumnMenu(p.X, p.Y);
+    Handled := True;
     Exit;
   end;
-  inherited MouseDown(Button, Shift, X, Y);
+  inherited DoContextPopup(MousePos, Handled);
 end;
 
 procedure TRtListGrid.FitToContent;
@@ -385,7 +392,8 @@ begin
   end;
   for c := 0 to High(widths) do
   begin
-    FWeights[c] := widths[c];
+    // A hidden column keeps its preferred width for when it comes back.
+    if not ((c <= High(FHidden)) and FHidden[c]) then FWeights[c] := widths[c];
     FFitting := True;
     try
       ColWidths[c] := widths[c];
