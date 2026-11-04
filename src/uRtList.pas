@@ -55,6 +55,7 @@ type
     function LastVisible: Integer;
     procedure ColumnItemClick(Sender: TObject);
     function GetMultiSelect: Boolean;
+    procedure CollapseSelection;
     procedure SetMultiSelect(AValue: Boolean);
     function DataIndex(ADisplay: Integer): Integer;
     function DisplayIndex(AData: Integer): Integer;
@@ -711,6 +712,8 @@ begin
   end;
   if (ASel >= 0) and (ASel < FCount) then
     Row := DisplayIndex(ASel) + 1;
+  // Rows reordered: the current one alone stays selected.
+  CollapseSelection;
   Invalidate;
 end;
 
@@ -777,6 +780,22 @@ procedure TRtListGrid.SetItemIndex(AValue: Integer);
 begin
   if (AValue >= 0) and (AValue < FCount) then
     Row := DisplayIndex(AValue) + 1;
+  // A row chosen by the program: that row alone, not a range extended to it.
+  CollapseSelection;
+end;
+
+procedure TRtListGrid.CollapseSelection;
+var
+  g: TGridRect;
+begin
+  if not MultiSelect or (Row < 1) then Exit;
+  SelectActive := False;
+  g.Left := 0;
+  g.Right := ColCount - 1;
+  g.Top := Row;
+  g.Bottom := Row;
+  Selection := g;
+  Invalidate;
 end;
 
 procedure TRtListGrid.SelectionChanged;
