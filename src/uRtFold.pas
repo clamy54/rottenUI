@@ -39,6 +39,13 @@ begin
   end;
 end;
 
+function Utf8Of(ACode: Cardinal): string;
+begin
+  if ACode < $80 then Result := Chr(ACode)
+  else if ACode < $800 then Result := Chr($C0 or (ACode shr 6)) + Chr($80 or (ACode and $3F))
+  else Result := Chr($E0 or (ACode shr 12)) + Chr($80 or ((ACode shr 6) and $3F)) + Chr($80 or (ACode and $3F));
+end;
+
 function FoldCode(ACode: Cardinal; out AText: string): Boolean;
 var
   ch: Char;
@@ -66,6 +73,16 @@ begin
     $2018, $2019, $201B, $2032: AText := '''';
     $2010..$2015, $2212: AText := '-';
     $A0, $2007, $202F: AText := ' ';
+    // Grec et cyrillique en minuscules (les accents grecs gardes).
+    $386: AText := Utf8Of($3AC);
+    $388..$38A: AText := Utf8Of(ACode + $25);
+    $38C: AText := Utf8Of($3CC);
+    $38E, $38F: AText := Utf8Of(ACode + $3F);
+    $391..$3A1, $3A3..$3AB: AText := Utf8Of(ACode + $20);
+    $400..$40F: AText := Utf8Of(ACode + $50);
+    $410..$42F: AText := Utf8Of(ACode + $20);
+    $460..$481, $48A..$4BF, $4D0..$52F:
+      if not Odd(ACode) then AText := Utf8Of(ACode + 1) else Result := False;
   else
     Result := False;
   end;
