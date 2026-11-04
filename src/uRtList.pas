@@ -130,6 +130,8 @@ type
     function SelectedIndices: TRtIndexArray;
     // Toutes les lignes (Ctrl+A), en selection multiple.
     procedure SelectAll;
+    // Les indices de donnees dans l'ordre affiche (le tri applique).
+    function DisplayedOrder: TRtIndexArray;
   end;
 
 implementation
@@ -624,6 +626,15 @@ begin
   if FSortCol >= 0 then ApplySortKeeping(sel);
   FFitPending := FAutoFit;
   Invalidate;
+end;
+
+function TRtListGrid.DisplayedOrder: TRtIndexArray;
+var
+  i: Integer;
+begin
+  Result := nil;
+  SetLength(Result, FCount);
+  for i := 0 to FCount - 1 do Result[i] := DataIndex(i);
 end;
 
 function TRtListGrid.DataIndex(ADisplay: Integer): Integer;
