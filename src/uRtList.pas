@@ -128,6 +128,8 @@ type
     property MultiSelect: Boolean read GetMultiSelect write SetMultiSelect;
     // Les lignes selectionnees (indices de donnees), la ligne courante seule sinon.
     function SelectedIndices: TRtIndexArray;
+    // Toutes les lignes (Ctrl+A), en selection multiple.
+    procedure SelectAll;
   end;
 
 implementation
@@ -547,7 +549,29 @@ begin
     Key := 0;
     Exit;
   end;
+  // Ctrl+A (Cmd+A on macOS): every row, when several may be selected.
+  if MultiSelect and (Key = VK_A) and (FCount > 0) and
+    ((Shift = [ssCtrl]) {$IFDEF DARWIN}or (Shift = [ssMeta]){$ENDIF}) then
+  begin
+    SelectAll;
+    Key := 0;
+    Exit;
+  end;
   inherited KeyDown(Key, Shift);
+end;
+
+procedure TRtListGrid.SelectAll;
+var
+  g: TGridRect;
+begin
+  if not MultiSelect or (FCount = 0) then Exit;
+  SelectActive := False;
+  g.Left := 0;
+  g.Right := ColCount - 1;
+  g.Top := 1;
+  g.Bottom := FCount;
+  Selection := g;
+  Invalidate;
 end;
 
 procedure TRtListGrid.RefreshMetrics;
