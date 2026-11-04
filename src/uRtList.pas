@@ -210,12 +210,14 @@ end;
 procedure TRtListGrid.FitToContent;
 var
   bmp: Graphics.TBitmap;
-  c, i, n, w, cw, px, arrow, cap: Integer;
+  c, i, n, w, cw, px, arrow, cap, avail, total, lo, hi: Integer;
   iconColor: TColor;
+  widths: array of Integer;
 begin
   FFitPending := False;
   if (FCaptions.Count = 0) or (Length(FWeights) <> FCaptions.Count) or
     (ColCount <> FCaptions.Count) then Exit;
+  SetLength(widths, FCaptions.Count);
   bmp := Graphics.TBitmap.Create;
   try
     bmp.Canvas.Font.Assign(Font);
@@ -238,16 +240,40 @@ begin
       end;
       if w < 40 then w := 40;
       if (c < FCaptions.Count - 1) and (w > cap) then w := cap;
-      FWeights[c] := w;
-      FFitting := True;
-      try
-        ColWidths[c] := w;
-      finally
-        FFitting := False;
-      end;
+      widths[c] := w;
     end;
   finally
     bmp.Free;
+  end;
+  // Too wide together: the widest give way first, so that every column
+  // stays inside the grid (no horizontal scroll bar to reach the others).
+  avail := ClientWidth - 2;
+  total := 0;
+  for c := 0 to High(widths) do Inc(total, widths[c]);
+  if (total > avail) and (avail >= 40 * Length(widths)) then
+  begin
+    lo := 40;
+    hi := 0;
+    for c := 0 to High(widths) do hi := Max(hi, widths[c]);
+    // The highest common limit that fits.
+    while lo < hi do
+    begin
+      cap := (lo + hi + 1) div 2;
+      total := 0;
+      for c := 0 to High(widths) do Inc(total, Min(widths[c], cap));
+      if total <= avail then lo := cap else hi := cap - 1;
+    end;
+    for c := 0 to High(widths) do widths[c] := Min(widths[c], lo);
+  end;
+  for c := 0 to High(widths) do
+  begin
+    FWeights[c] := widths[c];
+    FFitting := True;
+    try
+      ColWidths[c] := widths[c];
+    finally
+      FFitting := False;
+    end;
   end;
   FitColumns;
 end;
