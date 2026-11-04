@@ -13,7 +13,7 @@ uses
   uThemeData, uThemeLoad, uThemePreview, uTreeScrollBar, uUiKit, 
   uNoticeBanner, uThemedControls, uThemedSplitter, uDocTabBar, uRtStatusBar, 
   uRtLogList, uRtGauge, uRtProgress, uRtAbout, uRtWizard, uRtSecretEdit, 
-  uRtPassword, uGtk3Style, uRtReport, uRtChips, uRtDatePicker;
+  uRtPassword, uGtk3Style, uRtReport, uRtChips, uRtDatePicker, uRtFold;
 
 implementation
 

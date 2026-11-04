@@ -26,6 +26,7 @@ Lazarus trunk (5 ou plus) ; GTK2 reste possible avec la 4.8.
 | `uRtMessage` | boîtes de message et de saisie |
 | `uRtCombo`, `uRtCheck`, `uRtButton`, `uRtList` | liste déroulante, case à cocher, bouton, liste (`AutoFitColumns` : colonnes à la largeur de leur titre et de leur contenu) |
 | `uRtDatePicker` | champ de date `TDateField` : saisie jj/mm/aaaa et calendrier du mois dessiné au thème, valeur ISO aaaa-mm-jj |
+| `uRtFold` | repli de recherche `FoldText` / `FoldContains` : minuscules sans accents (é→e, œ→oe, ß→ss, accents décomposés retirés), apostrophes et tirets typographiques ramenés aux simples ; sans LCL |
 | `uTabBar`, `uMenuBar`, `uSearchBox`, `uTreeScrollBar`, `uPickDialog` | onglets, barre de menus, recherche, défilement, choix |
 | `uDocTabBar` | onglets de documents pour un éditeur, pilotés par événements : témoins modifié, lecture seule et enregistrement, réordonnancement, bouton « + » |
 | `uRtStatusBar` | barre de statut dessinée : panneaux de largeur fixe ou prenant la place restante, alignement, couleur de texte par panneau demandée au dessin |

@@ -59,7 +59,7 @@ function RunPick(ADialog: TPickDialog): TModalResult;
 implementation
 
 uses
-  uTheme;
+  uTheme, uRtFold;
 
 resourcestring
   rsPickSearch = 'Search';
@@ -128,12 +128,13 @@ var
 begin
   FList.Clear;
   FShown := nil;
-  f := LowerCase(Trim(FFilter.Text));
+  // Accents et casse ignores: "gen" trouve "Generique" accentue.
+  f := FoldText(Trim(FFilter.Text));
   for i := 0 to High(FRows) do
   begin
-    hit := (f = '') or (Pos(f, LowerCase(FRows[i].Key)) > 0);
+    hit := (f = '') or (Pos(f, FoldText(FRows[i].Key)) > 0);
     for j := 0 to High(FRows[i].Cells) do
-      if not hit and (Pos(f, LowerCase(FRows[i].Cells[j])) > 0) then hit := True;
+      if not hit and (Pos(f, FoldText(FRows[i].Cells[j])) > 0) then hit := True;
     if not hit then Continue;
     FList.AddRow(FRows[i].Cells);
     SetLength(FShown, Length(FShown) + 1);

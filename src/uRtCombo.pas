@@ -99,7 +99,7 @@ type
 implementation
 
 uses
-  Math, LCLIntf, uTheme, uUiKit{$IFDEF LCLCocoa}, CocoaAll{$ENDIF};
+  Math, LCLIntf, uTheme, uUiKit, uRtFold{$IFDEF LCLCocoa}, CocoaAll{$ENDIF};
 
 {$IFDEF LCLCocoa}
 // Cocoa: une session modale ne livre les clics qu'a la fenetre modale et a ses enfants,
@@ -193,7 +193,8 @@ var
   f: string;
 begin
   f := '';
-  if FFilter <> nil then f := AnsiLowerCase(Trim(FFilter.Text));
+  // Accents et casse ignores.
+  if FFilter <> nil then f := FoldText(Trim(FFilter.Text));
   FList.Items.BeginUpdate;
   try
     FList.Items.Clear;
@@ -201,7 +202,7 @@ begin
     SetLength(FRowObjs, 0);
     keep := -1;
     for i := 0 to FCombo.Items.Count - 1 do
-      if (f = '') or (Pos(f, AnsiLowerCase(FCombo.Items[i])) > 0) then
+      if (f = '') or (Pos(f, FoldText(FCombo.Items[i])) > 0) then
       begin
         SetLength(FMap, Length(FMap) + 1);
         FMap[High(FMap)] := i;
