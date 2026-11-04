@@ -41,6 +41,8 @@ type
     FStretchLast: Boolean;
     FRowColor: TColor;
     FRowTextColor: TColor;
+    FAutoFit: Boolean;
+    FFitPending: Boolean;
     function DataIndex(ADisplay: Integer): Integer;
     function DisplayIndex(AData: Integer): Integer;
     procedure ApplySort;
@@ -53,8 +55,10 @@ type
     procedure ClearRows;
     procedure SetShowHeader(AValue: Boolean);
     procedure SetStretchLast(AValue: Boolean);
+    procedure SetAutoFit(AValue: Boolean);
     procedure ApplyHeaderHeight;
   protected
+    procedure Paint; override;
     procedure DrawCell(ACol, ARow: Longint; ARect: TRect; AState: TGridDrawState); override;
     procedure SelectionChanged; virtual;
     procedure AfterMoveSelection(const aPrevCol, aPrevRow: Integer); override;
@@ -73,6 +77,9 @@ type
     function AddRow(const AValues: array of string): Integer;
     function CellText(AIndex, ACol: Integer): string; virtual;
     procedure RefreshMetrics;
+    // Colonnes a la largeur de leur titre et de leur contenu (les FIT_ROWS
+    // premieres lignes), mesurees au prochain affichage; la derniere s'etire.
+    procedure FitToContent;
     property Count: Integer read FCount write SetCount;
     property ItemIndex: Integer read GetItemIndex write SetItemIndex;
     property OnGetCell: TRtGetCellEvent read FOnGetCell write FOnGetCell;
@@ -89,6 +96,9 @@ type
     property StretchLastColumn: Boolean read FStretchLast write SetStretchLast;
     property RowColor: TColor read FRowColor write FRowColor;
     property RowTextColor: TColor read FRowTextColor write FRowTextColor;
+    // Refait FitToContent a chaque changement des donnees (Count, AddRow,
+    // colonnes, police). Une colonne elargie a la main le reste jusque-la.
+    property AutoFitColumns: Boolean read FAutoFit write SetAutoFit;
   end;
 
 implementation
@@ -98,6 +108,9 @@ uses
 
 const
   CELL_ICON = 16;
+  // Lignes mesurees pour ajuster les colonnes: de quoi voir les donnees,
+  // rapide sur des dizaines de milliers de resultats.
+  FIT_ROWS = 400;
 
 function TRtListGrid.CellIcon(AIndex, ACol: Integer; out AColor: TColor): string;
 begin
@@ -163,6 +176,7 @@ begin
   ColCount := FCaptions.Count;
   ColWidths[FCaptions.Count - 1] := AWidth;
   FitColumns;
+  FFitPending := FAutoFit;
   Invalidate;
 end;
 
@@ -175,6 +189,66 @@ end;
 procedure TRtListGrid.SetStretchLast(AValue: Boolean);
 begin
   FStretchLast := AValue;
+  FitColumns;
+end;
+
+procedure TRtListGrid.SetAutoFit(AValue: Boolean);
+begin
+  FAutoFit := AValue;
+  FFitPending := AValue;
+  Invalidate;
+end;
+
+// Mesure a l'affichage: la largeur de la grille est alors connue (la limite
+// d'une colonne en depend) et une boucle d'AddRow ne mesure qu'une fois.
+procedure TRtListGrid.Paint;
+begin
+  if FAutoFit and FFitPending then FitToContent;
+  inherited Paint;
+end;
+
+procedure TRtListGrid.FitToContent;
+var
+  bmp: Graphics.TBitmap;
+  c, i, n, w, cw, px, arrow, cap: Integer;
+  iconColor: TColor;
+begin
+  FFitPending := False;
+  if (FCaptions.Count = 0) or (Length(FWeights) <> FCaptions.Count) or
+    (ColCount <> FCaptions.Count) then Exit;
+  bmp := Graphics.TBitmap.Create;
+  try
+    bmp.Canvas.Font.Assign(Font);
+    px := ScreenIconSize(CELL_ICON);
+    // La fleche de tri prend sa place dans l'en-tete (DrawCell).
+    arrow := 2 * Max(3, DefaultRowHeight div 5) + 12;
+    n := Min(FCount, FIT_ROWS);
+    // Une note longue ne prend pas toute la largeur: les autres colonnes restent visibles.
+    cap := Max(120, (ClientWidth * 2) div 5);
+    for c := 0 to FCaptions.Count - 1 do
+    begin
+      w := 0;
+      if FShowHeader then w := bmp.Canvas.TextWidth(FCaptions[c]) + 10 + arrow;
+      for i := 0 to n - 1 do
+      begin
+        // Les marges de DrawCell (6 a gauche, 4 a droite) et un peu d'air.
+        cw := bmp.Canvas.TextWidth(CellText(i, c)) + 18;
+        if CellIcon(i, c, iconColor) <> '' then Inc(cw, px + 6);
+        if cw > w then w := cw;
+      end;
+      if w < 40 then w := 40;
+      if (c < FCaptions.Count - 1) and (w > cap) then w := cap;
+      FWeights[c] := w;
+      FFitting := True;
+      try
+        ColWidths[c] := w;
+      finally
+        FFitting := False;
+      end;
+    end;
+  finally
+    bmp.Free;
+  end;
   FitColumns;
 end;
 
@@ -288,6 +362,7 @@ begin
     bmp.Free;
   end;
   ApplyHeaderHeight;
+  FFitPending := FAutoFit;
   Invalidate;
 end;
 
@@ -321,6 +396,7 @@ begin
   if (FCount = 0) or (FLastSelected >= FCount) then FLastSelected := -1;
   RowCount := FCount + 1;
   if FSortCol >= 0 then ApplySortKeeping(sel);
+  FFitPending := FAutoFit;
   Invalidate;
 end;
 
