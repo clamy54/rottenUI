@@ -14,6 +14,7 @@ uses
   Classes, SysUtils, Controls, Grids, Graphics, LCLType, Menus;
 
 type
+  TRtIndexArray = array of Integer;
   TRtGetCellEvent = function(Sender: TObject; AIndex, ACol: Integer): string of object;
   TRtSelectEvent = procedure(Sender: TObject; AIndex: Integer) of object;
   TRtGetCellIconEvent = function(Sender: TObject; AIndex, ACol: Integer;
@@ -53,6 +54,8 @@ type
     function GetColumnCaption(AIndex: Integer): string;
     function LastVisible: Integer;
     procedure ColumnItemClick(Sender: TObject);
+    function GetMultiSelect: Boolean;
+    procedure SetMultiSelect(AValue: Boolean);
     function DataIndex(ADisplay: Integer): Integer;
     function DisplayIndex(AData: Integer): Integer;
     procedure ApplySort;
@@ -120,6 +123,10 @@ type
     property OnColumnsChanged: TNotifyEvent read FOnColumnsChanged write FOnColumnsChanged;
     // Le menu des colonnes a l'ecran en (X, Y) (un bouton "Colonnes..." de l'application).
     procedure ShowColumnMenu(X, Y: Integer);
+    // Plusieurs lignes consecutives (Maj + clic, Maj + fleches).
+    property MultiSelect: Boolean read GetMultiSelect write SetMultiSelect;
+    // Les lignes selectionnees (indices de donnees), la ligne courante seule sinon.
+    function SelectedIndices: TRtIndexArray;
   end;
 
 implementation
@@ -229,6 +236,45 @@ procedure TRtListGrid.Paint;
 begin
   if FAutoFit and FFitPending then FitToContent;
   inherited Paint;
+end;
+
+function TRtListGrid.GetMultiSelect: Boolean;
+begin
+  Result := goRangeSelect in Options;
+end;
+
+procedure TRtListGrid.SetMultiSelect(AValue: Boolean);
+begin
+  if AValue then Options := Options + [goRangeSelect] else Options := Options - [goRangeSelect];
+end;
+
+function TRtListGrid.SelectedIndices: TRtIndexArray;
+var
+  r, n, firstRow, lastRow: Integer;
+begin
+  Result := nil;
+  if FCount = 0 then Exit;
+  firstRow := Selection.Top;
+  lastRow := Selection.Bottom;
+  // No range: the current row alone.
+  if not MultiSelect or (firstRow < 1) or (lastRow < firstRow) then
+  begin
+    if ItemIndex >= 0 then
+    begin
+      SetLength(Result, 1);
+      Result[0] := ItemIndex;
+    end;
+    Exit;
+  end;
+  SetLength(Result, lastRow - firstRow + 1);
+  n := 0;
+  for r := firstRow to lastRow do
+    if (r >= 1) and (r <= FCount) then
+    begin
+      Result[n] := DataIndex(r - 1);
+      Inc(n);
+    end;
+  SetLength(Result, n);
 end;
 
 function TRtListGrid.GetColumnCount: Integer;
@@ -767,7 +813,9 @@ begin
   end
   else
   begin
-    if (FCount > 0) and (ARow = Row) then
+    // The current row, and in a multiple selection every row of the range.
+    if (FCount > 0) and ((ARow = Row) or (MultiSelect and (ARow >= Selection.Top) and
+      (ARow <= Selection.Bottom) and (Selection.Bottom > Selection.Top))) then
     begin
       Canvas.Brush.Color := clSideSel;
       Canvas.Font.Color := clSideTextHi;
