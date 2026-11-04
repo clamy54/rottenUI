@@ -11,7 +11,7 @@ unit uRtList;
 interface
 
 uses
-  Classes, SysUtils, Controls, Grids, Graphics, LCLType;
+  Classes, SysUtils, Controls, Grids, Graphics, LCLType, Menus;
 
 type
   TRtGetCellEvent = function(Sender: TObject; AIndex, ACol: Integer): string of object;
@@ -43,6 +43,16 @@ type
     FRowTextColor: TColor;
     FAutoFit: Boolean;
     FFitPending: Boolean;
+    FHidden: array of Boolean;
+    FColumnMenu: Boolean;
+    FColMenu: TPopupMenu;
+    FOnColumnsChanged: TNotifyEvent;
+    function GetColumnVisible(AIndex: Integer): Boolean;
+    procedure SetColumnVisible(AIndex: Integer; AValue: Boolean);
+    function GetColumnCount: Integer;
+    function GetColumnCaption(AIndex: Integer): string;
+    function LastVisible: Integer;
+    procedure ColumnItemClick(Sender: TObject);
     function DataIndex(ADisplay: Integer): Integer;
     function DisplayIndex(AData: Integer): Integer;
     procedure ApplySort;
@@ -68,6 +78,7 @@ type
     procedure Click; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure HeaderClick(IsColumn: Boolean; index: Integer); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -99,12 +110,22 @@ type
     // Refait FitToContent a chaque changement des donnees (Count, AddRow,
     // colonnes, police). Une colonne elargie a la main le reste jusque-la.
     property AutoFitColumns: Boolean read FAutoFit write SetAutoFit;
+    // Colonnes masquees (largeur nulle) ou affichees; ColumnMenu: un clic
+    // droit sur l'en-tete propose de les cocher (une au moins reste).
+    property ColumnVisible[AIndex: Integer]: Boolean read GetColumnVisible write SetColumnVisible;
+    property ColumnCount: Integer read GetColumnCount;
+    property ColumnCaption[AIndex: Integer]: string read GetColumnCaption;
+    property ColumnMenu: Boolean read FColumnMenu write FColumnMenu;
+    // Apres un changement de colonnes par l'utilisateur (a enregistrer).
+    property OnColumnsChanged: TNotifyEvent read FOnColumnsChanged write FOnColumnsChanged;
+    // Le menu des colonnes a l'ecran en (X, Y) (un bouton "Colonnes..." de l'application).
+    procedure ShowColumnMenu(X, Y: Integer);
   end;
 
 implementation
 
 uses
-  Forms, Math, LazUTF8, uTheme, uIcons;
+  Forms, Math, LazUTF8, uTheme, uIcons, uMenuBar;
 
 const
   CELL_ICON = 16;
@@ -164,6 +185,7 @@ procedure TRtListGrid.ClearColumns;
 begin
   FCaptions.Clear;
   FWeights := nil;
+  FHidden := nil;
   ColCount := 1;
   ColWidths[0] := 100;
 end;
@@ -173,6 +195,8 @@ begin
   FCaptions.Add(ACaption);
   SetLength(FWeights, FCaptions.Count);
   FWeights[High(FWeights)] := AWidth;
+  SetLength(FHidden, FCaptions.Count);
+  FHidden[High(FHidden)] := False;
   ColCount := FCaptions.Count;
   ColWidths[FCaptions.Count - 1] := AWidth;
   FitColumns;
@@ -207,10 +231,99 @@ begin
   inherited Paint;
 end;
 
+function TRtListGrid.GetColumnCount: Integer;
+begin
+  Result := FCaptions.Count;
+end;
+
+function TRtListGrid.GetColumnCaption(AIndex: Integer): string;
+begin
+  if (AIndex >= 0) and (AIndex < FCaptions.Count) then Result := FCaptions[AIndex] else Result := '';
+end;
+
+function TRtListGrid.GetColumnVisible(AIndex: Integer): Boolean;
+begin
+  Result := (AIndex >= 0) and (AIndex <= High(FHidden)) and not FHidden[AIndex];
+end;
+
+function TRtListGrid.LastVisible: Integer;
+begin
+  Result := High(FWeights);
+  while (Result >= 0) and (Result <= High(FHidden)) and FHidden[Result] do Dec(Result);
+end;
+
+procedure TRtListGrid.SetColumnVisible(AIndex: Integer; AValue: Boolean);
+var
+  i, n: Integer;
+begin
+  if (AIndex < 0) or (AIndex > High(FHidden)) or (FHidden[AIndex] = not AValue) then Exit;
+  // One column at least stays.
+  if not AValue then
+  begin
+    n := 0;
+    for i := 0 to High(FHidden) do
+      if not FHidden[i] then Inc(n);
+    if n <= 1 then Exit;
+  end;
+  FHidden[AIndex] := not AValue;
+  FFitting := True;
+  try
+    if AValue then ColWidths[AIndex] := Max(40, FWeights[AIndex]) else ColWidths[AIndex] := 0;
+  finally
+    FFitting := False;
+  end;
+  FFitPending := FAutoFit;
+  FitColumns;
+  Invalidate;
+end;
+
+procedure TRtListGrid.ColumnItemClick(Sender: TObject);
+var
+  c: Integer;
+begin
+  c := TMenuItem(Sender).Tag;
+  SetColumnVisible(c, not ColumnVisible[c]);
+  if Assigned(FOnColumnsChanged) then FOnColumnsChanged(Self);
+end;
+
+procedure TRtListGrid.ShowColumnMenu(X, Y: Integer);
+var
+  c: Integer;
+  mi: TMenuItem;
+begin
+  if FColMenu = nil then FColMenu := TPopupMenu.Create(Self);
+  FColMenu.Items.Clear;
+  for c := 0 to FCaptions.Count - 1 do
+  begin
+    mi := TMenuItem.Create(FColMenu);
+    mi.Caption := FCaptions[c];
+    mi.Checked := ColumnVisible[c];
+    mi.Tag := c;
+    mi.OnClick := @ColumnItemClick;
+    FColMenu.Items.Add(mi);
+  end;
+  ThemePopupMenu(FColMenu);
+  FColMenu.PopUp(X, Y);
+end;
+
+procedure TRtListGrid.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+var
+  p: TPoint;
+begin
+  // A right click on the header: the columns to show.
+  if (Button = mbRight) and FColumnMenu and FShowHeader and (Y < RowHeights[0]) then
+  begin
+    p := ClientToScreen(Point(X, Y));
+    ShowColumnMenu(p.X, p.Y);
+    Exit;
+  end;
+  inherited MouseDown(Button, Shift, X, Y);
+end;
+
 procedure TRtListGrid.FitToContent;
 var
   bmp: Graphics.TBitmap;
-  c, i, n, w, cw, px, arrow, cap, avail, total, lo, hi: Integer;
+  c, i, n, w, cw, px, arrow, cap, avail, total, lo, hi, shown: Integer;
   iconColor: TColor;
   widths: array of Integer;
 begin
@@ -239,7 +352,8 @@ begin
         if cw > w then w := cw;
       end;
       if w < 40 then w := 40;
-      if (c < FCaptions.Count - 1) and (w > cap) then w := cap;
+      if (c <> LastVisible) and (w > cap) then w := cap;
+      if (c <= High(FHidden)) and FHidden[c] then w := 0;
       widths[c] := w;
     end;
   finally
@@ -250,10 +364,14 @@ begin
   avail := ClientWidth - 2;
   total := 0;
   for c := 0 to High(widths) do Inc(total, widths[c]);
-  if (total > avail) and (avail >= 40 * Length(widths)) then
+  shown := 0;
+  for c := 0 to High(widths) do
+    if widths[c] > 0 then Inc(shown);
+  if (total > avail) and (avail >= 40 * shown) then
   begin
     lo := 40;
     hi := 0;
+    // (hidden columns: 0, below any limit)
     for c := 0 to High(widths) do hi := Max(hi, widths[c]);
     // The highest common limit that fits.
     while lo < hi do
@@ -289,11 +407,12 @@ begin
   if not FFillWidth then
   begin
     used := 0;
-    for i := 0 to High(FWeights) - 1 do
-      Inc(used, ColWidths[i]);
+    for i := 0 to High(FWeights) do
+      if i <> LastVisible then Inc(used, ColWidths[i]);
     FFitting := True;
     try
-      ColWidths[High(FWeights)] := Max(FWeights[High(FWeights)], avail - used);
+      if LastVisible >= 0 then
+        ColWidths[LastVisible] := Max(FWeights[LastVisible], avail - used);
     finally
       FFitting := False;
     end;
@@ -301,18 +420,20 @@ begin
   end;
   total := 0;
   for i := 0 to High(FWeights) do
-    Inc(total, FWeights[i]);
+    if not ((i <= High(FHidden)) and FHidden[i]) then Inc(total, FWeights[i]);
   if total <= 0 then Exit;
   FFitting := True;
   try
     used := 0;
     for i := 0 to High(FWeights) do
     begin
-      if i = High(FWeights) then
+      if (i <= High(FHidden)) and FHidden[i] then
+        w := 0
+      else if i = LastVisible then
         w := avail - used
       else
         w := (avail * FWeights[i]) div total;
-      if w < 40 then w := 40;
+      if (w < 40) and not ((i <= High(FHidden)) and FHidden[i]) then w := 40;
       ColWidths[i] := w;
       Inc(used, w);
     end;
