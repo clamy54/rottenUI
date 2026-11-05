@@ -29,6 +29,9 @@ type
     // a droite.
     function AddChoice(const ACaption: string; const AItems: array of string;
       AOnChange: TNotifyEvent; AWidth: Integer = 220): TRtComboBox;
+    // Champ de saisie a droite, meme rangement que AddChoice. ATextHint s'affiche tant que le
+    // champ est vide; la touche Entree reste a la charge de l'application.
+    function AddEdit(const ACaption, ATextHint: string; AWidth: Integer = 200): TEdit;
     // Un texte vide retire sa ligne; les deux vides, le bloc disparait.
     procedure SetTexts(const ASummary, AWarning: string);
     procedure ApplyTheme;
@@ -77,6 +80,15 @@ begin
   Result := MakeCombo(FBar, AItems, alRight);
   Result.Width := AWidth;
   Result.OnChange := AOnChange;
+  MakeLabel(FBar, ACaption, alRight).Layout := tlCenter;
+end;
+
+function TRtReportView.AddEdit(const ACaption, ATextHint: string; AWidth: Integer): TEdit;
+begin
+  Result := MakeEdit(FBar, alRight);
+  Result.Width := AWidth;
+  Result.TextHint := ATextHint;
+  Result.BorderSpacing.Around := 3;
   MakeLabel(FBar, ACaption, alRight).Layout := tlCenter;
 end;
 
