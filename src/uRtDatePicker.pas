@@ -13,13 +13,13 @@ unit uRtDatePicker;
 interface
 
 uses
-  Classes, SysUtils, Types, Controls, Graphics, Forms, StdCtrls, ExtCtrls, LCLType, DateUtils;
+  Classes, SysUtils, Types, Controls, Graphics, Forms, StdCtrls, ExtCtrls, LCLType, DateUtils, uRtButton;
 
 type
   TDateField = class(TPanel)
   private
     FEdit: TEdit;
-    FButton: TButton;
+    FButton: TRtFlatButton;
     procedure ButtonClick(Sender: TObject);
     function GetIso: string;
     procedure SetIso(const AValue: string);
@@ -418,7 +418,17 @@ begin
   inherited Create(AOwner);
   BevelOuter := bvNone;
   Caption := '';
-  FButton := MakeButton(Self, '...', @ButtonClick, alRight);
+  // The theme's flat button with its three dots, as high as the field.
+  FButton := TRtFlatButton.Create(Self);
+  FButton.Parent := Self;
+  FButton.Glyph := rbgDots;
+  FButton.Border := clBorder;
+  FButton.Align := alRight;
+  FButton.Width := 28;
+  FButton.BorderSpacing.Left := 4;
+  FButton.BorderSpacing.Top := 1;
+  FButton.BorderSpacing.Bottom := 1;
+  FButton.OnClick := @ButtonClick;
   FButton.Hint := rsDatePick;
   FButton.ShowHint := True;
   FEdit := MakeEdit(Self, alClient);
