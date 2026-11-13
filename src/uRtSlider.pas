@@ -91,6 +91,7 @@ const
   TRACK_H = 6;
   THUMB_R = 9;
   PAD_X = 12;         // room for the thumb at both ends
+  MIN_TRACK = 40;     // a compact track shorter than this drops its texts
 
 constructor TRtSlider.Create(AOwner: TComponent);
 begin
@@ -205,7 +206,9 @@ begin
   if FIntegral then AValue := EnsureRange(Round(AValue), Ceil(FMin), Floor(FMax));
   if AValue = FValue then Exit;
   FValue := AValue;
+  // Shown at once, before whoever follows it does its (maybe long) work.
   Invalidate;
+  if HandleAllocated and IsVisible then Update;
   if Assigned(FOnChange) then FOnChange(Self);
 end;
 
@@ -235,10 +238,14 @@ var
 begin
   if FCompact then
   begin
+    // (Codex review 94) Too narrow for all: the caption goes, then the
+    // value; the track always stays within the control.
     cy := ClientHeight div 2;
     Result := Rect(PAD_X + CaptionWidth, cy - TRACK_H div 2, ClientWidth - PAD_X - ValueWidth,
       cy - TRACK_H div 2 + TRACK_H);
-    if Result.Right < Result.Left + 10 then Result.Right := Result.Left + 10;
+    if Result.Right < Result.Left + MIN_TRACK then Result.Left := PAD_X;
+    if Result.Right < Result.Left + MIN_TRACK then Result.Right := ClientWidth - PAD_X;
+    if Result.Right < Result.Left then Result.Right := Result.Left;
     Exit;
   end;
   cy := RowHeight + THUMB_R + 4;
@@ -433,10 +440,13 @@ begin
     shown := ValueText(FValue);
     if FCompact then
     begin
-      cv.TextOut(PAD_X - 4, (ClientHeight - cv.TextHeight('Ag')) div 2, Caption);
+      // The texts the layout kept room for.
+      if r.Left > PAD_X then
+        cv.TextOut(PAD_X - 4, (ClientHeight - cv.TextHeight('Ag')) div 2, Caption);
       cv.Font.Style := [fsBold];
       cv.Font.Color := accent;
-      cv.TextOut(ClientWidth - PAD_X + 4 - cv.TextWidth(shown), (ClientHeight - cv.TextHeight('Ag')) div 2, shown);
+      if r.Right < ClientWidth - PAD_X then
+        cv.TextOut(ClientWidth - PAD_X + 4 - cv.TextWidth(shown), (ClientHeight - cv.TextHeight('Ag')) div 2, shown);
     end
     else
     begin
