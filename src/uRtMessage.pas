@@ -148,21 +148,36 @@ begin
   end;
 end;
 
+resourcestring
+  rsMsgYes = '&Yes';
+  rsMsgNo = '&No';
+  rsMsgOk = 'OK';
+  rsMsgCancel = 'Cancel';
+  rsMsgAbort = 'Abort';
+  rsMsgRetry = 'Retry';
+  rsMsgIgnore = 'Ignore';
+  rsMsgAll = 'All';
+  rsMsgNoToAll = 'No to All';
+  rsMsgYesToAll = 'Yes to All';
+  rsMsgHelp = 'Help';
+  rsMsgClose = 'Close';
+
+// Les libelles des boutons, traduisibles (l'application fournit ses .po).
 function ButtonCaption(ABtn: TMsgDlgBtn): string;
 begin
   case ABtn of
-    mbYes: Result := 'Yes';
-    mbNo: Result := 'No';
-    mbOK: Result := 'OK';
-    mbCancel: Result := 'Cancel';
-    mbAbort: Result := 'Abort';
-    mbRetry: Result := 'Retry';
-    mbIgnore: Result := 'Ignore';
-    mbAll: Result := 'All';
-    mbNoToAll: Result := 'No to all';
-    mbYesToAll: Result := 'Yes to all';
-    mbHelp: Result := 'Help';
-    mbClose: Result := 'Close';
+    mbYes: Result := rsMsgYes;
+    mbNo: Result := rsMsgNo;
+    mbOK: Result := rsMsgOk;
+    mbCancel: Result := rsMsgCancel;
+    mbAbort: Result := rsMsgAbort;
+    mbRetry: Result := rsMsgRetry;
+    mbIgnore: Result := rsMsgIgnore;
+    mbAll: Result := rsMsgAll;
+    mbNoToAll: Result := rsMsgNoToAll;
+    mbYesToAll: Result := rsMsgYesToAll;
+    mbHelp: Result := rsMsgHelp;
+    mbClose: Result := rsMsgClose;
   else
     Result := '?';
   end;
@@ -243,7 +258,7 @@ begin
   if Length(specs) = 0 then
   begin
     SetLength(specs, 1);
-    specs[0].Caption := 'OK';
+    specs[0].Caption := rsMsgOk;
     specs[0].Result := mrOk;
   end;
   Result := RunMessage(ACaption, AMsg, ADlgType, specs);
@@ -289,11 +304,11 @@ begin
       end;
       if specs[High(specs)].Caption = '' then
         case specs[High(specs)].Result of
-          mrYes: specs[High(specs)].Caption := 'Yes';
-          mrNo: specs[High(specs)].Caption := 'No';
-          mrCancel: specs[High(specs)].Caption := 'Cancel';
+          mrYes: specs[High(specs)].Caption := rsMsgYes;
+          mrNo: specs[High(specs)].Caption := rsMsgNo;
+          mrCancel: specs[High(specs)].Caption := rsMsgCancel;
         else
-          specs[High(specs)].Caption := 'OK';
+          specs[High(specs)].Caption := rsMsgOk;
         end;
     end;
     Inc(i);
@@ -319,8 +334,8 @@ begin
     ed.Align := alClient;
     ed.BorderSpacing.Around := 3;
     ed.Text := AValue;
-    f.AddButton('Cancel', mrCancel, False, True);
-    f.AddButton('OK', mrOk, True);
+    f.AddButton(rsMsgCancel, mrCancel, False, True);
+    f.AddButton(rsMsgOk, mrOk, True);
     textH := WrappedHeight(f.Font, APrompt, MSG_WIDTH - 2 * 8 - 2 * 4 - 8);
     f.ClientHeight := textH + 2 * 4 + 34 + 2 * 8 + 16 + 44;
     f.ApplyTheme;
