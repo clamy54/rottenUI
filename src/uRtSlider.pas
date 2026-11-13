@@ -4,8 +4,10 @@ unit uRtSlider;
   filled up to a round thumb, labelled marks under it. Linear or
   logarithmic (a size from 200 to 10 000 pixels reads well on the latter).
   Mouse (click, drag), wheel and keys (arrows, Page Up / Down, Home, End).
+  Compact: one line for a toolbar (caption, track, value), marks unlabelled.
   The shapes are drawn four times larger then averaged, for smooth edges on
-  every platform; the texts are written at their size, sharp.
+  every platform; the texts are written at their size, sharp; all of it off
+  screen first, then shown at once (no flicker while dragging).
   SPDX-License-Identifier: GPL-3.0-or-later }
 
 {$mode objfpc}{$H+}
@@ -27,7 +29,7 @@ type
   TRtSlider = class(TCustomControl)
   private
     FMin, FMax, FValue: Double;
-    FLogarithmic, FIntegral, FDragging: Boolean;
+    FLogarithmic, FIntegral, FDragging, FCompact: Boolean;
     FSteps: Integer;
     FMarks: array of TRtSliderMark;
     FOnChange: TNotifyEvent;
@@ -41,8 +43,13 @@ type
     procedure ValueAt(X: Integer);
     procedure StepBy(ASteps: Integer);
     function RowHeight: Integer;
+    function ValueText(AValue: Double): string;
+    function CaptionWidth: Integer;
+    function ValueWidth: Integer;
+    procedure SetCompact(AValue: Boolean);
   protected
     procedure Paint; override;
+    procedure PaintLabels(cv: TCanvas; const r: TRect; accent, muted: TColor);
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
@@ -67,6 +74,8 @@ type
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     { The value as the first line shows it (else the number). }
     property OnFormat: TRtSliderFormat read FOnFormat write FOnFormat;
+    { One line, for a toolbar. }
+    property Compact: Boolean read FCompact write SetCompact;
     property Caption;
     property Font;
     property TabStop;
@@ -111,7 +120,36 @@ end;
 
 function TRtSlider.PreferredHeight: Integer;
 begin
-  Result := RowHeight * 2 + THUMB_R * 2 + 10;
+  if FCompact then Result := Math.Max(RowHeight, THUMB_R * 2 + 8)
+  else Result := RowHeight * 2 + THUMB_R * 2 + 10;
+end;
+
+procedure TRtSlider.SetCompact(AValue: Boolean);
+begin
+  if AValue = FCompact then Exit;
+  FCompact := AValue;
+  Invalidate;
+end;
+
+function TRtSlider.ValueText(AValue: Double): string;
+begin
+  if Assigned(FOnFormat) then Result := FOnFormat(Self, AValue)
+  else if FIntegral then Result := IntToStr(Round(AValue))
+  else Result := FormatFloat('0.##', AValue);
+end;
+
+function TRtSlider.CaptionWidth: Integer;
+begin
+  Canvas.Font.Assign(Font);
+  if Caption = '' then Result := 0 else Result := Canvas.TextWidth(Caption) + 10;
+end;
+
+{ Room for the widest value (its bounds), so that the track never moves. }
+function TRtSlider.ValueWidth: Integer;
+begin
+  Canvas.Font.Assign(Font);
+  Canvas.Font.Style := [fsBold];
+  Result := Math.Max(Canvas.TextWidth(ValueText(FMin)), Canvas.TextWidth(ValueText(FMax))) + 10;
 end;
 
 procedure TRtSlider.Configure(AMin, AMax, AValue: Double; ALogarithmic, AIntegral: Boolean);
@@ -195,6 +233,14 @@ function TRtSlider.TrackRect: TRect;
 var
   cy: Integer;
 begin
+  if FCompact then
+  begin
+    cy := ClientHeight div 2;
+    Result := Rect(PAD_X + CaptionWidth, cy - TRACK_H div 2, ClientWidth - PAD_X - ValueWidth,
+      cy - TRACK_H div 2 + TRACK_H);
+    if Result.Right < Result.Left + 10 then Result.Right := Result.Left + 10;
+    Exit;
+  end;
   cy := RowHeight + THUMB_R + 4;
   Result := Rect(PAD_X, cy - TRACK_H div 2, ClientWidth - PAD_X, cy - TRACK_H div 2 + TRACK_H);
 end;
@@ -329,13 +375,11 @@ procedure TRtSlider.Paint;
 var
   big, small: TBitmap;
   r: TRect;
-  tx, cy, i, j, mx, rh, tw, lx, pass: Integer;
-  spans: array of TPoint;            // X..Y: the labels written
-  clash: Boolean;
+  tx, cy, i, mx: Integer;
   muted, track, accent: TColor;
   shown: string;
+  cv: TCanvas;
 begin
-  rh := RowHeight;
   r := TrackRect;
   tx := ThumbX;
   cy := (r.Top + r.Bottom) div 2;
@@ -360,7 +404,8 @@ begin
       Brush.Color := accent;
       if tx > r.Left then
         RoundRect(r.Left * SS, r.Top * SS, tx * SS + TRACK_H * SS div 2, r.Bottom * SS, TRACK_H * SS, TRACK_H * SS);
-      // The marks' ticks.
+      // The marks' ticks (under the track; none when compact).
+      if not FCompact then
       for i := 0 to High(FMarks) do
       begin
         mx := r.Left + Round((r.Right - r.Left) * Fraction(FMarks[i].Value));
@@ -379,25 +424,44 @@ begin
       Ellipse((tx - THUMB_R + 3) * SS, (cy - THUMB_R + 3) * SS, (tx + THUMB_R - 3) * SS, (cy + THUMB_R - 3) * SS);
     end;
     Shrink(big, small);
+    // The texts, sharp, on the same bitmap: caption and value, then the
+    // marks' labels (none when compact).
+    cv := small.Canvas;
+    cv.Font.Assign(Font);
+    cv.Brush.Style := bsClear;
+    cv.Font.Color := clAppFg;
+    shown := ValueText(FValue);
+    if FCompact then
+    begin
+      cv.TextOut(PAD_X - 4, (ClientHeight - cv.TextHeight('Ag')) div 2, Caption);
+      cv.Font.Style := [fsBold];
+      cv.Font.Color := accent;
+      cv.TextOut(ClientWidth - PAD_X + 4 - cv.TextWidth(shown), (ClientHeight - cv.TextHeight('Ag')) div 2, shown);
+    end
+    else
+    begin
+      cv.TextOut(PAD_X - 4, 0, Caption);
+      cv.Font.Style := [fsBold];
+      cv.Font.Color := accent;
+      cv.TextOut(ClientWidth - PAD_X + 4 - cv.TextWidth(shown), 0, shown);
+      cv.Font.Style := [];
+      cv.Font.Height := -Math.Max(8, Round(Abs(Font.Height) * 0.85));
+      if Font.Height = 0 then cv.Font.Size := Math.Max(7, Round(Font.Size * 0.85));
+      PaintLabels(cv, r, accent, muted);
+    end;
     Canvas.Draw(0, 0, small);
   finally
     small.Free;
     big.Free;
   end;
-  // The texts, sharp: caption and value, then the marks' labels.
-  Canvas.Font.Assign(Font);
-  Canvas.Brush.Style := bsClear;
-  Canvas.Font.Color := clAppFg;
-  Canvas.TextOut(PAD_X - 4, 0, Caption);
-  if Assigned(FOnFormat) then shown := FOnFormat(Self, FValue)
-  else if FIntegral then shown := IntToStr(Round(FValue))
-  else shown := FormatFloat('0.##', FValue);
-  Canvas.Font.Style := [fsBold];
-  Canvas.Font.Color := accent;
-  Canvas.TextOut(ClientWidth - PAD_X + 4 - Canvas.TextWidth(shown), 0, shown);
-  Canvas.Font.Style := [];
-  Canvas.Font.Height := -Math.Max(8, Round(Abs(Font.Height) * 0.85));
-  if Font.Height = 0 then Canvas.Font.Size := Math.Max(7, Round(Font.Size * 0.85));
+end;
+
+procedure TRtSlider.PaintLabels(cv: TCanvas; const r: TRect; accent, muted: TColor);
+var
+  i, j, mx, tw, lx, pass: Integer;
+  spans: array of TPoint;            // X..Y: the labels written
+  clash: Boolean;
+begin
   // Labels: the strong ones first, then the others where they fit.
   SetLength(spans, 0);
   for pass := 0 to 1 do
@@ -405,18 +469,17 @@ begin
     begin
       if FMarks[i].Strong <> (pass = 0) then Continue;
       mx := r.Left + Round((r.Right - r.Left) * Fraction(FMarks[i].Value));
-      tw := Canvas.TextWidth(FMarks[i].Text);
+      tw := cv.TextWidth(FMarks[i].Text);
       lx := EnsureRange(mx - tw div 2, 0, Math.Max(0, ClientWidth - tw));
       clash := False;
       for j := 0 to High(spans) do
         if (lx < spans[j].Y + 8) and (lx + tw + 8 > spans[j].X) then clash := True;
       if clash then Continue;
-      if FMarks[i].Strong then Canvas.Font.Color := accent else Canvas.Font.Color := muted;
-      Canvas.TextOut(lx, r.Bottom + 10, FMarks[i].Text);
+      if FMarks[i].Strong then cv.Font.Color := accent else cv.Font.Color := muted;
+      cv.TextOut(lx, r.Bottom + 10, FMarks[i].Text);
       SetLength(spans, Length(spans) + 1);
       spans[High(spans)] := Point(lx, lx + tw);
     end;
-  Canvas.Brush.Style := bsSolid;
 end;
 
 end.

@@ -2624,13 +2624,12 @@ begin
     // of dashes): that part drawn plain, the phase still carried on.
     if Length(ADash) * (vis / total + 2) > 4e6 then
     begin
-      FlushPiece;
-      bn := 0;
+      // (Codex review 93) Added to the piece under way, which goes on when
+      // the dash does: its corners keep their joins.
       Put(sx, sy);
       Put(sx + ux * vis, sy + uy * vis);
-      FlushPiece;
       Advance(vis);
-      if drawing then Put(sx + ux * vis, sy + uy * vis);
+      if not drawing then FlushPiece;
       if lb < segLen then
       begin
         FlushPiece;
