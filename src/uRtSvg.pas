@@ -2446,13 +2446,31 @@ begin
   end;
 end;
 
-{ X modulo APeriod (> 0), in [0, APeriod), without any integer conversion
-  (Codex review 91: Floor returns 32 bits). }
+{ X modulo APeriod (> 0), in [0, APeriod), exact: the multiples of the
+  period by powers of two taken off one by one, each subtraction exact
+  (q <= X < 2q). (Codex reviews 91, 92: Floor returns 32 bits, and a
+  quotient then a product loses the remainder of a huge X.) }
 function FMod(X, APeriod: Double): Double;
+var
+  neg: Boolean;
+  q: Double;
 begin
-  Result := X - APeriod * Int(X / APeriod);
-  if Result < 0 then Result := Result + APeriod;
-  if (Result >= APeriod) or (Result < 0) or IsNan(Result) then Result := 0;
+  if IsNan(X) or IsInfinite(X) or not (APeriod > 0) then Exit(0);
+  neg := X < 0;
+  X := Abs(X);
+  if X >= APeriod then
+  begin
+    q := APeriod;
+    while q * 2 <= X do q := q * 2;
+    while q >= APeriod do
+    begin
+      if X >= q then X := X - q;
+      q := q / 2;
+    end;
+  end;
+  if neg and (X > 0) then X := APeriod - X;
+  if (X >= APeriod) or (X < 0) then X := 0;
+  Result := X;
 end;
 
 { The pieces a dash pattern draws (device lengths), each stroked open.
@@ -2491,6 +2509,9 @@ var
   var
     guard: Integer;
   begin
+    // (Codex review 92) Whole periods off first: a short remainder is never
+    // lost against a huge distance.
+    AL := FMod(AL, total);
     if AL < remain then
     begin
       remain := remain - AL;
@@ -2599,7 +2620,25 @@ begin
     sy := ay + uy * la;
     vis := lb - la;
     t := 0;
-    guard := Round(Min(1e7, 2 * Length(ADash) * (vis / total + 2)));
+    // (Codex review 92) A pattern too fine for the length shown (millions
+    // of dashes): that part drawn plain, the phase still carried on.
+    if Length(ADash) * (vis / total + 2) > 4e6 then
+    begin
+      FlushPiece;
+      bn := 0;
+      Put(sx, sy);
+      Put(sx + ux * vis, sy + uy * vis);
+      FlushPiece;
+      Advance(vis);
+      if drawing then Put(sx + ux * vis, sy + uy * vis);
+      if lb < segLen then
+      begin
+        FlushPiece;
+        Advance(segLen - lb);
+      end;
+      Continue;
+    end;
+    guard := Round(2 * Length(ADash) * (vis / total + 2)) + 16;
     if drawing then Put(sx, sy);
     while (vis - t > remain) and (guard > 0) do
     begin
