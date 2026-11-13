@@ -199,7 +199,8 @@ begin
       // The first layer over the void, written whole.
       intf := TLazIntfImage.Create(0, 0);
       try
-        desc.Init_BPP24_B8G8R8_BIO_TTB(AWidth, AHeight);
+        // 32 bits per pixel, as screens are: copied without conversion.
+        desc.Init_BPP32_B8G8R8_BIO_TTB(AWidth, AHeight);
         intf.DataDescription := desc;
         y0 := 0;
         while y0 < AHeight do
@@ -219,9 +220,10 @@ begin
               cr := (ink.R + (paper.R - ink.R) * l) * a + void.R * (1 - a);
               cg := (ink.G + (paper.G - ink.G) * l) * a + void.G * (1 - a);
               cb := (ink.B + (paper.B - ink.B) * l) * a + void.B * (1 - a);
-              row[3 * x] := Round(EnsureRange(cb, 0, 255));
-              row[3 * x + 1] := Round(EnsureRange(cg, 0, 255));
-              row[3 * x + 2] := Round(EnsureRange(cr, 0, 255));
+              row[4 * x] := Round(EnsureRange(cb, 0, 255));
+              row[4 * x + 1] := Round(EnsureRange(cg, 0, 255));
+              row[4 * x + 2] := Round(EnsureRange(cr, 0, 255));
+              row[4 * x + 3] := 255;
             end;
           end;
           Inc(y0, r.Height);
