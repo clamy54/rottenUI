@@ -2446,6 +2446,15 @@ begin
   end;
 end;
 
+{ X modulo APeriod (> 0), in [0, APeriod), without any integer conversion
+  (Codex review 91: Floor returns 32 bits). }
+function FMod(X, APeriod: Double): Double;
+begin
+  Result := X - APeriod * Int(X / APeriod);
+  if Result < 0 then Result := Result + APeriod;
+  if (Result >= APeriod) or (Result < 0) or IsNan(Result) then Result := 0;
+end;
+
 { The pieces a dash pattern draws (device lengths), each stroked open.
   (Codex review 90) Only what lies on the raster (with AMargin) is cut into
   dashes: elsewhere the pattern's phase is advanced by arithmetic. }
@@ -2455,8 +2464,9 @@ procedure DashedStroke(ARas: TRas; const F: TFlat; AFrom, ACount: Integer; AClos
 var
   xs, ys, bufX, bufY: array of Double;
   n, i, k, di, bn: Integer;
-  total, pos, remain, segLen, t, ax, ay, bx, by, la, lb: Double;
+  total, pos, remain, segLen, t, ax, ay, bx, by, la, lb, ux, uy, sx, sy, vis: Double;
   drawing: Boolean;
+  guard: Integer;
 
   procedure Put(AX, AY: Double);
   begin
@@ -2490,7 +2500,7 @@ var
     di := (di + 1) mod Length(ADash);
     drawing := not drawing;
     // An even pattern: a whole period comes back to the same dash.
-    AL := AL - total * Floor(AL / total);
+    AL := FMod(AL, total);
     remain := ADash[di];
     guard := 0;
     while (AL >= remain) and (guard < 2 * Length(ADash) + 2) do
@@ -2552,7 +2562,7 @@ begin
   total := 0;
   for k := 0 to High(ADash) do total := total + ADash[k];
   // Where in the pattern the path starts.
-  pos := AOffset - total * Floor(AOffset / total);
+  pos := FMod(AOffset, total);
   di := 0;
   while (pos >= ADash[di]) and (pos > 0) do
   begin
@@ -2579,23 +2589,34 @@ begin
       FlushPiece;
       Advance(la);
     end;
-    t := la;
-    if drawing then Put(ax + (bx - ax) * t / segLen, ay + (by - ay) * t / segLen);
-    while lb - t > remain do
+    // (Codex review 91) Walked from the visible part's own start: far from
+    // the segment's start, adding a short dash to a huge distance would not
+    // move it. Each period is a pixel at least: the guard is never reached
+    // in honest use.
+    ux := (bx - ax) / segLen;
+    uy := (by - ay) / segLen;
+    sx := ax + ux * la;
+    sy := ay + uy * la;
+    vis := lb - la;
+    t := 0;
+    guard := Round(Min(1e7, 2 * Length(ADash) * (vis / total + 2)));
+    if drawing then Put(sx, sy);
+    while (vis - t > remain) and (guard > 0) do
     begin
+      Dec(guard);
       t := t + remain;
       if drawing then
       begin
-        Put(ax + (bx - ax) * t / segLen, ay + (by - ay) * t / segLen);
+        Put(sx + ux * t, sy + uy * t);
         FlushPiece;
       end;
       di := (di + 1) mod Length(ADash);
       remain := ADash[di];
       drawing := not drawing;
-      if drawing then Put(ax + (bx - ax) * t / segLen, ay + (by - ay) * t / segLen);
+      if drawing then Put(sx + ux * t, sy + uy * t);
     end;
-    remain := remain - (lb - t);
-    if drawing then Put(ax + (bx - ax) * lb / segLen, ay + (by - ay) * lb / segLen);
+    remain := Max(0, remain - (vis - t));
+    if drawing then Put(sx + ux * vis, sy + uy * vis);
     if lb < segLen then
     begin
       FlushPiece;
@@ -2632,7 +2653,12 @@ begin
       margin := 2;
       if FShapes[i].StrokeAlpha > 0 then
         margin := margin + Min(1e7, FShapes[i].StrokeWidth * k * Max(1, FShapes[i].MiterLimit));
-      Flatten(Self, FShapes[i], t, ras.W, ras.H, margin, f);
+      // (Codex review 91) A dashed stroke needs every length (its phase):
+      // no curve shortened to its chord off the raster then.
+      if (FShapes[i].StrokeAlpha > 0) and (Length(FShapes[i].Dash) > 0) then
+        Flatten(Self, FShapes[i], t, ras.W, ras.H, 1e300, f)
+      else
+        Flatten(Self, FShapes[i], t, ras.W, ras.H, margin, f);
       if f.Bad or (f.Count = 0) then Continue;
       if (f.MaxX < -margin) or (f.MaxY < -margin) or (f.MinY > ras.H + margin) or
         (f.MinX > ras.W + margin) then Continue;

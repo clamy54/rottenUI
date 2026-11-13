@@ -115,10 +115,22 @@ begin
 end;
 
 procedure TRtSlider.Configure(AMin, AMax, AValue: Double; ALogarithmic, AIntegral: Boolean);
+var
+  i, n: Integer;
 begin
   FLogarithmic := ALogarithmic and (AMin > 0);
-  FIntegral := AIntegral;
   SetRange(AMin, AMax);
+  // (Codex review 91) Whole values only when the range holds one.
+  FIntegral := AIntegral and (Ceil(FMin) <= Floor(FMax));
+  // Marks of an earlier range that this one does not hold: dropped.
+  n := 0;
+  for i := 0 to High(FMarks) do
+    if (FMarks[i].Value >= FMin) and (FMarks[i].Value <= FMax) then
+    begin
+      FMarks[n] := FMarks[i];
+      Inc(n);
+    end;
+  SetLength(FMarks, n);
   FValue := FMin;
   SetValue(AValue);
   Invalidate;
@@ -162,6 +174,7 @@ end;
 function TRtSlider.Fraction(AValue: Double): Double;
 begin
   if FMax <= FMin then Exit(0);
+  AValue := EnsureRange(AValue, FMin, FMax);
   if FLogarithmic then
     Result := Ln(AValue / FMin) / Ln(FMax / FMin)
   else
