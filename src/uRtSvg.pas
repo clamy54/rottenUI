@@ -36,6 +36,8 @@ const
   RTSVG_MAX_SHAPES = 400000;
   RTSVG_MAX_POINTS = 8000000;     // coordinates kept (x and y count once)
   RTSVG_MAX_USE_DEPTH = 8;
+  RTSVG_MAX_VISITS = 2000000;     // elements walked, <use> expansions counted
+  RTSVG_MAX_FLAT = 2000000;       // points of one shape once flattened
   RTSVG_MAX_SIDE = 1000000;       // the image's own size, in pixels
 
 type
@@ -71,6 +73,7 @@ type
     Baseline: Integer;              // 0 alphabetic, 1 central / middle, 2 hanging / top
     Lum, Alpha: Single;
     Text: string;                   // UTF-8, white space collapsed
+    Order: Integer;                 // the shapes drawn before it
   end;
 
   { Grey levels and coverage of a rendered area, row by row from the top.
@@ -98,8 +101,10 @@ type
     procedure LoadFromString(const AData: RawByteString);
     procedure Clear;
     { Renders into ARaster, whose Width and Height the caller sets: AM maps
-      the image's pixels (0..Width, 0..Height) onto the raster's. }
-    procedure Render(const AM: TRtSvgMatrix; var ARaster: TRtSvgRaster);
+      the image's pixels (0..Width, 0..Height) onto the raster's. The
+      shapes from AFirst to ALast only, when given (texts lie between). }
+    procedure Render(const AM: TRtSvgMatrix; var ARaster: TRtSvgRaster;
+      AFirst: Integer = 0; ALast: Integer = MaxInt);
     { The image's own size, in pixels (its width / height, else its viewBox). }
     property Width: Double read FWidth;
     property Height: Double read FHeight;
@@ -121,6 +126,9 @@ function RtSvgTranslate(TX, TY: Double): TRtSvgMatrix;
 procedure RtSvgApply(const AM: TRtSvgMatrix; X, Y: Double; out AX, AY: Double);
 
 implementation
+
+uses
+  StrUtils;
 
 const
   CMD_MOVE = 0;
@@ -334,9 +342,9 @@ var
 
   function Find(const AWhat: string): Integer;
   begin
-    Result := Pos(AWhat, Copy(S, p, MaxInt));
+    // (Codex review 90) From p, never copying the rest of the document.
+    Result := PosEx(AWhat, S, p);
     if Result = 0 then Broken('unterminated ' + AWhat);
-    Result := p + Result - 1;
   end;
 
   procedure SkipDoctype;
@@ -839,6 +847,7 @@ type
     Ids: array of string;            // sorted id -> node, for <use> and gradients
     IdNodes: array of Integer;
     UseDepth: Integer;
+    Visits: Integer;
     ViewW, ViewH: Double;
     procedure IndexIds;
     function FindId(const AId: string): Integer;
@@ -876,38 +885,77 @@ end;
 
 procedure TBuilder.IndexIds;
 var
-  i, j, k: Integer;
+  found: array of string;
+  nodes, tmp: array of Integer;
+  i, n, w, lo, mid, hi, a, b, k, c: Integer;
   id: string;
 begin
-  Ids := nil;
-  IdNodes := nil;
+  // (Codex review 90) Gathered, then merge-sorted once by id and by place
+  // in the document (the first of duplicated ids wins): never quadratic.
+  n := 0;
+  SetLength(found, 0);
+  SetLength(nodes, 0);
   for i := 0 to Doc.Count - 1 do
     if (Doc.Nodes[i].Name <> '') and Attr(Doc.Nodes[i], 'id', id) and (id <> '') then
     begin
-      SetLength(Ids, Length(Ids) + 1);
-      SetLength(IdNodes, Length(IdNodes) + 1);
-      // Insertion keeps the list sorted; the first of duplicated ids wins.
-      j := High(Ids);
-      while (j > 0) and (CompareStr(Ids[j - 1], id) > 0) do
+      if n >= Length(nodes) then
       begin
-        Ids[j] := Ids[j - 1];
-        IdNodes[j] := IdNodes[j - 1];
-        Dec(j);
+        SetLength(nodes, Max(64, 2 * n));
+        SetLength(found, Length(nodes));
       end;
-      if (j > 0) and (Ids[j - 1] = id) then
-      begin
-        for k := j to High(Ids) - 1 do
-        begin
-          Ids[k] := Ids[k + 1];
-          IdNodes[k] := IdNodes[k + 1];
-        end;
-        SetLength(Ids, Length(Ids) - 1);
-        SetLength(IdNodes, Length(IdNodes) - 1);
-        Continue;
-      end;
-      Ids[j] := id;
-      IdNodes[j] := i;
+      found[n] := id;
+      nodes[n] := i;
+      Inc(n);
     end;
+  // nodes[] holds node indexes; found[k] is the id of the k-th gathered one:
+  // sort positions 0..n-1 through an index of positions.
+  SetLength(tmp, n);
+  SetLength(IdNodes, n);
+  for i := 0 to n - 1 do IdNodes[i] := i;
+  w := 1;
+  while w < n do
+  begin
+    lo := 0;
+    while lo < n do
+    begin
+      mid := Min(lo + w, n);
+      hi := Min(lo + 2 * w, n);
+      a := lo; b := mid; k := lo;
+      while (a < mid) and (b < hi) do
+      begin
+        c := CompareStr(found[IdNodes[a]], found[IdNodes[b]]);
+        if (c < 0) or ((c = 0) and (IdNodes[a] <= IdNodes[b])) then
+        begin
+          tmp[k] := IdNodes[a];
+          Inc(a);
+        end
+        else
+        begin
+          tmp[k] := IdNodes[b];
+          Inc(b);
+        end;
+        Inc(k);
+      end;
+      while a < mid do begin tmp[k] := IdNodes[a]; Inc(a); Inc(k); end;
+      while b < hi do begin tmp[k] := IdNodes[b]; Inc(b); Inc(k); end;
+      lo := hi;
+    end;
+    for i := 0 to n - 1 do IdNodes[i] := tmp[i];
+    w := w * 2;
+  end;
+  // Kept: the first of each id, as node indexes.
+  SetLength(Ids, n);
+  k := 0;
+  for i := 0 to n - 1 do
+    if (k = 0) or (Ids[k - 1] <> found[IdNodes[i]]) then
+    begin
+      Ids[k] := found[IdNodes[i]];
+      tmp[k] := nodes[IdNodes[i]];
+      Inc(k);
+    end;
+  SetLength(Ids, k);
+  SetLength(IdNodes, k);
+  for i := 0 to k - 1 do IdNodes[i] := tmp[i];
 end;
 
 function TBuilder.FindId(const AId: string): Integer;
@@ -1603,6 +1651,7 @@ var
       t.Anchor := run.Anchor;
       t.Baseline := run.Baseline;
       t.Text := buf;
+      t.Order := Img.FShapeCount;
       p := run.Fill;
       if p.Kind = pkCurrent then begin p.Lum := run.ColorLum; p.Alpha := run.ColorAlpha; end;
       if p.Kind = pkNone then
@@ -1802,6 +1851,10 @@ var
 begin
   name := Doc.Nodes[ANode].Name;
   if name = '' then Exit;
+  // (Codex review 90) Every element walked counts, drawing or not: uses of
+  // uses of empty groups cannot multiply without end.
+  Inc(Visits);
+  if Visits > RTSVG_MAX_VISITS then TooBig('elements drawn');
   for i := Low(SKIPPED) to High(SKIPPED) do
     if name = SKIPPED[i] then Exit;
   if Pos(':', name) > 0 then Exit;    // an editor's own elements
@@ -1939,6 +1992,7 @@ type
     Closed: array of Boolean;
     Subs: Integer;
     MinX, MinY, MaxX, MaxY: Double;
+    Bad: Boolean;                  // a point not finite: the shape is left out
   end;
 
   TRas = class
@@ -2125,8 +2179,9 @@ var
   n, i: Integer;
   a: Double;
 begin
-  if R <= 0 then Exit;
-  n := EnsureRange(Ceil(R * 2), 8, 256);
+  if not (R > 0) then Exit;
+  // (bounded before any conversion: Codex review 90)
+  if R > 128 then n := 256 else n := Max(8, Ceil(R * 2));
   if Length(Pts) < 2 * n then SetLength(Pts, 2 * n);
   for i := 0 to n - 1 do
   begin
@@ -2283,11 +2338,20 @@ begin
 end;
 
 { The shape's path in device space: lines, and cubics cut into segments
-  enough for an error under FLAT_TOLERANCE pixel. }
-procedure Flatten(AImg: TRtSvgImage; const AShape: TRtSvgShape; const AT: TRtSvgMatrix; var F: TFlat);
+  enough for an error under FLAT_TOLERANCE pixel. A cubic wholly off the
+  raster (beyond AMargin) is its chord: left of the raster both count the
+  same, elsewhere neither counts. Bounded (RTSVG_MAX_FLAT points: then
+  chords only); F.Bad when a point is not a finite, sane number. }
+procedure Flatten(AImg: TRtSvgImage; const AShape: TRtSvgShape; const AT: TRtSvgMatrix;
+  AW, AH, AMargin: Double; var F: TFlat);
 
   procedure AddPt(AX, AY: Double);
   begin
+    if IsNan(AX) or IsNan(AY) or (Abs(AX) > 1e15) or (Abs(AY) > 1e15) then
+    begin
+      F.Bad := True;
+      Exit;
+    end;
     if F.Count >= Length(F.X) then
     begin
       SetLength(F.X, Max(256, 2 * Length(F.X)));
@@ -2316,15 +2380,17 @@ procedure Flatten(AImg: TRtSvgImage; const AShape: TRtSvgShape; const AT: TRtSvg
 
 var
   c, pt, k, n: Integer;
-  x, y, x1, y1, x2, y2, x3, y3, x0, y0, l, t, mt: Double;
+  x, y, x1, y1, x2, y2, x3, y3, x0, y0, l, t, mt, v: Double;
 begin
   F.Count := 0;
   F.Subs := 0;
+  F.Bad := False;
   F.MinX := MaxDouble; F.MinY := MaxDouble; F.MaxX := -MaxDouble; F.MaxY := -MaxDouble;
   pt := AShape.PtFirst;
   x0 := 0; y0 := 0;
   for c := AShape.First to AShape.First + AShape.Count - 1 do
   begin
+    if F.Bad then Exit;
     case AImg.FCmds[c] of
       CMD_MOVE:
         begin
@@ -2349,11 +2415,17 @@ begin
           RtSvgApply(AT, AImg.FPts[pt + 4], AImg.FPts[pt + 5], x3, y3);
           Inc(pt, 6);
           if F.Subs = 0 then begin NewSub; AddPt(x0, y0); end;
-          // Segments from the curve's second differences: an error within
-          // FLAT_TOLERANCE of a pixel.
+          // Segments from the curve's second differences, bounded before
+          // any conversion (Codex review 90); one when off the raster or
+          // past the budget.
           l := Max(Sqrt(Sqr(x0 - 2 * x1 + x2) + Sqr(y0 - 2 * y1 + y2)),
             Sqrt(Sqr(x1 - 2 * x2 + x3) + Sqr(y1 - 2 * y2 + y3)));
-          n := EnsureRange(Ceil(Sqrt(l * 0.75 / FLAT_TOLERANCE)), 1, 500);
+          v := Sqrt(l * 0.75 / FLAT_TOLERANCE);
+          if IsNan(v) or (v > 500) then n := 500 else n := Max(1, Ceil(v));
+          if (Max(Max(x0, x1), Max(x2, x3)) < -AMargin) or (Min(Min(x0, x1), Min(x2, x3)) > AW + AMargin) or
+            (Max(Max(y0, y1), Max(y2, y3)) < -AMargin) or (Min(Min(y0, y1), Min(y2, y3)) > AH + AMargin) or
+            (F.Count + n > RTSVG_MAX_FLAT) then
+            n := 1;
           for k := 1 to n do
           begin
             t := k / n;
@@ -2374,13 +2446,16 @@ begin
   end;
 end;
 
-{ The pieces a dash pattern draws (device lengths), each stroked open. }
+{ The pieces a dash pattern draws (device lengths), each stroked open.
+  (Codex review 90) Only what lies on the raster (with AMargin) is cut into
+  dashes: elsewhere the pattern's phase is advanced by arithmetic. }
 procedure DashedStroke(ARas: TRas; const F: TFlat; AFrom, ACount: Integer; AClosed: Boolean;
-  const ADash: array of Double; AOffset, HW: Double; ACap: TRtSvgCap; AJoin: TRtSvgJoin; AMiter: Double);
+  const ADash: array of Double; AOffset, HW, AMargin: Double; ACap: TRtSvgCap; AJoin: TRtSvgJoin;
+  AMiter: Double);
 var
   xs, ys, bufX, bufY: array of Double;
   n, i, k, di, bn: Integer;
-  total, pos, remain, segLen, t, ax, ay, bx, by: Double;
+  total, pos, remain, segLen, t, ax, ay, bx, by, la, lb: Double;
   drawing: Boolean;
 
   procedure Put(AX, AY: Double);
@@ -2399,6 +2474,64 @@ var
   begin
     if bn >= 2 then ARas.StrokePolyline(bufX, bufY, 0, bn, False, HW, ACap, AJoin, AMiter);
     bn := 0;
+  end;
+
+  { The pattern moved on by AL without drawing (whole periods skipped). }
+  procedure Advance(AL: Double);
+  var
+    guard: Integer;
+  begin
+    if AL < remain then
+    begin
+      remain := remain - AL;
+      Exit;
+    end;
+    AL := AL - remain;
+    di := (di + 1) mod Length(ADash);
+    drawing := not drawing;
+    // An even pattern: a whole period comes back to the same dash.
+    AL := AL - total * Floor(AL / total);
+    remain := ADash[di];
+    guard := 0;
+    while (AL >= remain) and (guard < 2 * Length(ADash) + 2) do
+    begin
+      AL := AL - remain;
+      di := (di + 1) mod Length(ADash);
+      drawing := not drawing;
+      remain := ADash[di];
+      Inc(guard);
+    end;
+    remain := Max(0, remain - AL);
+  end;
+
+  { The part of the segment A-B (its length L) within the raster grown by
+    AMargin, as distances from A; False when none. }
+  function Visible(L: Double; out ALo, AHi: Double): Boolean;
+  var
+    t0, t1, d, p, q: Double;
+    e: Integer;
+  begin
+    t0 := 0;
+    t1 := 1;
+    for e := 0 to 3 do
+    begin
+      case e of
+        0: begin d := bx - ax; p := -d; q := ax - (-AMargin); end;
+        1: begin d := bx - ax; p := d; q := (ARas.W + AMargin) - ax; end;
+        2: begin d := by - ay; p := -d; q := ay - (-AMargin); end;
+      else
+        begin d := by - ay; p := d; q := (ARas.H + AMargin) - ay; end;
+      end;
+      if p = 0 then
+      begin
+        if q < 0 then Exit(False);
+      end
+      else if p < 0 then t0 := Max(t0, q / p)
+      else t1 := Min(t1, q / p);
+    end;
+    Result := t0 < t1;
+    ALo := t0 * L;
+    AHi := t1 * L;
   end;
 
 begin
@@ -2421,23 +2554,34 @@ begin
   // Where in the pattern the path starts.
   pos := AOffset - total * Floor(AOffset / total);
   di := 0;
-  while pos >= ADash[di] do
+  while (pos >= ADash[di]) and (pos > 0) do
   begin
     pos := pos - ADash[di];
     di := (di + 1) mod Length(ADash);
   end;
-  remain := ADash[di] - pos;
+  remain := Max(0, ADash[di] - pos);
   drawing := not Odd(di);
   bn := 0;
-  if drawing then Put(xs[0], ys[0]);
   for i := 0 to n - 2 do
   begin
     ax := xs[i]; ay := ys[i];
     bx := xs[i + 1]; by := ys[i + 1];
     segLen := Sqrt(Sqr(bx - ax) + Sqr(by - ay));
     if segLen <= 0 then Continue;
-    t := 0;
-    while segLen - t > remain do
+    if not Visible(segLen, la, lb) then
+    begin
+      FlushPiece;
+      Advance(segLen);
+      Continue;
+    end;
+    if la > 0 then
+    begin
+      FlushPiece;
+      Advance(la);
+    end;
+    t := la;
+    if drawing then Put(ax + (bx - ax) * t / segLen, ay + (by - ay) * t / segLen);
+    while lb - t > remain do
     begin
       t := t + remain;
       if drawing then
@@ -2450,13 +2594,19 @@ begin
       drawing := not drawing;
       if drawing then Put(ax + (bx - ax) * t / segLen, ay + (by - ay) * t / segLen);
     end;
-    remain := remain - (segLen - t);
-    if drawing then Put(bx, by);
+    remain := remain - (lb - t);
+    if drawing then Put(ax + (bx - ax) * lb / segLen, ay + (by - ay) * lb / segLen);
+    if lb < segLen then
+    begin
+      FlushPiece;
+      Advance(segLen - lb);
+    end;
   end;
   FlushPiece;
 end;
 
-procedure TRtSvgImage.Render(const AM: TRtSvgMatrix; var ARaster: TRtSvgRaster);
+procedure TRtSvgImage.Render(const AM: TRtSvgMatrix; var ARaster: TRtSvgRaster;
+  AFirst: Integer; ALast: Integer);
 var
   ras: TRas;
   f: TFlat;
@@ -2473,16 +2623,17 @@ begin
   ras := TRas.Create(ARaster.Width, ARaster.Height);
   try
     f := Default(TFlat);
-    for i := 0 to FShapeCount - 1 do
+    for i := Max(0, AFirst) to Min(FShapeCount, ALast) - 1 do
     begin
       t := RtSvgMul(AM, FShapes[i].M);
-      Flatten(Self, FShapes[i], t, f);
-      if f.Count = 0 then Continue;
       k := Sqrt(Abs(t.A * t.D - t.B * t.C));
+      if IsNan(k) or (k > 1e12) then Continue;
       // Off the raster (strokes and their miters counted): nothing to do.
       margin := 2;
       if FShapes[i].StrokeAlpha > 0 then
-        margin := margin + FShapes[i].StrokeWidth * k * Max(1, FShapes[i].MiterLimit);
+        margin := margin + Min(1e7, FShapes[i].StrokeWidth * k * Max(1, FShapes[i].MiterLimit));
+      Flatten(Self, FShapes[i], t, ras.W, ras.H, margin, f);
+      if f.Bad or (f.Count = 0) then Continue;
       if (f.MaxX < -margin) or (f.MaxY < -margin) or (f.MinY > ras.H + margin) or
         (f.MinX > ras.W + margin) then Continue;
       if FShapes[i].FillAlpha > 0 then
@@ -2498,7 +2649,7 @@ begin
       end;
       if FShapes[i].StrokeAlpha > 0 then
       begin
-        wdev := FShapes[i].StrokeWidth * k;
+        wdev := Min(1e7, FShapes[i].StrokeWidth * k);
         alpha := FShapes[i].StrokeAlpha;
         // A line thinner than a pixel: one pixel, lighter.
         if wdev < 1 then
@@ -2519,7 +2670,7 @@ begin
             total := total + dash[j];
           end;
           // A pattern finer than a pixel reads as a plain line.
-          if total < 1 then dash := nil;
+          if (total < 1) or IsNan(total) or (total > 1e15) then dash := nil;
         end;
         for s := 0 to f.Subs - 1 do
         begin
@@ -2529,7 +2680,7 @@ begin
               FShapes[i].Join, FShapes[i].MiterLimit)
           else
             DashedStroke(ras, f, f.Starts[s], cnt, f.Closed[s], dash, FShapes[i].DashOffset * k, hw,
-              FShapes[i].Cap, FShapes[i].Join, FShapes[i].MiterLimit);
+              margin, FShapes[i].Cap, FShapes[i].Join, FShapes[i].MiterLimit);
         end;
         ras.Composite(ARaster, FShapes[i].StrokeLum, alpha, False);
       end;
