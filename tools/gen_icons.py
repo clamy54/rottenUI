@@ -47,6 +47,9 @@ ICONS = [
     "chevron-right", "chevron-down",
     # dialogues et etapes
     "shield-lock", "file-plus", "circle-dashed", "circle-dot", "circle-minus",
+    # barres d'outils de plans et de dessins
+    "map-pin-plus", "network", "background", "flag", "layout-align-left", "typography",
+    "route", "current-location", "arrows-maximize",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -102,18 +105,11 @@ def main():
             fname = "%s_%d.png" % (name, size)
             open(os.path.join(DST, fname), "wb").write(render(svg, size, MASK_COLOR))
             count += 1
-    with open(os.path.join(ROOT, "src", "uIconCatalog.inc"), "w", encoding="utf-8", newline="
-") as f:
-        f.write("// Genere par tools/gen_icons.py; ne pas editer a la main.
-")
-        f.write("const
-  ICON_IDS: array[0..%d] of string = (
-" % (len(ICONS) - 1))
-        f.write(",
-".join("    '%s'" % n for n in ICONS))
-        f.write(");
-  ICON_SIZES: array[0..%d] of Integer = (%s);
-" % (len(SIZES) - 1, ", ".join(map(str, SIZES))))
+    with open(os.path.join(ROOT, "src", "uIconCatalog.inc"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("// Genere par tools/gen_icons.py; ne pas editer a la main.\n")
+        f.write("const\n  ICON_IDS: array[0..%d] of string = (\n" % (len(ICONS) - 1))
+        f.write(",\n".join("    '%s'" % n for n in ICONS))
+        f.write(");\n  ICON_SIZES: array[0..%d] of Integer = (%s);\n" % (len(SIZES) - 1, ", ".join(map(str, SIZES))))
     print("%d icones, %d masques PNG" % (len(ICONS), count))
     # les PNG changent: la ressource embarquee aussi
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
