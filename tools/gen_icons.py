@@ -49,7 +49,7 @@ ICONS = [
     "shield-lock", "file-plus", "circle-dashed", "circle-dot", "circle-minus",
     # barres d'outils de plans et de dessins
     "map-pin-plus", "network", "background", "flag", "layout-align-left", "typography",
-    "route", "current-location", "arrows-maximize",
+    "route", "current-location", "arrows-maximize", "rotate-clockwise",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
