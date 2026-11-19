@@ -80,7 +80,7 @@ begin
   begin
     t := AImage.Texts[i];
     if (t.Order < AOrderLo) or (t.Order > AOrderHi) then Continue;
-    if (t.Text = '') or (t.Alpha <= 0.02) then Continue;
+    if (t.Text = '') or (t.Alpha <= 0.02) or AImage.TextHidden[i] then Continue;
     m := RtSvgMul(AM, t.M);
     k := Sqrt(Abs(m.A * m.D - m.B * m.C));
     size := t.Size * k;

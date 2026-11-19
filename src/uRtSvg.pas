@@ -94,7 +94,10 @@ type
     FShapeCount: Integer;
     FTexts: array of TRtSvgText;
     FTextCount: Integer;
+    FTextHidden: array of Boolean;
     function GetText(AIndex: Integer): TRtSvgText;
+    function GetTextHidden(AIndex: Integer): Boolean;
+    procedure SetTextHidden(AIndex: Integer; AValue: Boolean);
   public
     { Reads an SVG document (UTF-8, or UTF-16 with its byte order mark).
       Raises ERtSvg when it is not one, or breaks a limit. }
@@ -111,6 +114,10 @@ type
     property ShapeCount: Integer read FShapeCount;
     property TextCount: Integer read FTextCount;
     property Texts[AIndex: Integer]: TRtSvgText read GetText;
+    { A text left out when painted (an application writes another in its
+      place); none is after loading. }
+    property TextHidden[AIndex: Integer]: Boolean read GetTextHidden write SetTextHidden;
+    procedure ShowAllTexts;
   end;
 
 { True when the data looks like an SVG document (an <svg> element near the
@@ -1882,11 +1889,29 @@ begin
   FShapeCount := 0;
   FTexts := nil;
   FTextCount := 0;
+  FTextHidden := nil;
 end;
 
 function TRtSvgImage.GetText(AIndex: Integer): TRtSvgText;
 begin
   Result := FTexts[AIndex];
+end;
+
+function TRtSvgImage.GetTextHidden(AIndex: Integer): Boolean;
+begin
+  Result := (AIndex >= 0) and (AIndex <= High(FTextHidden)) and FTextHidden[AIndex];
+end;
+
+procedure TRtSvgImage.SetTextHidden(AIndex: Integer; AValue: Boolean);
+begin
+  if (AIndex < 0) or (AIndex >= FTextCount) then Exit;
+  if Length(FTextHidden) <> FTextCount then SetLength(FTextHidden, FTextCount);
+  FTextHidden[AIndex] := AValue;
+end;
+
+procedure TRtSvgImage.ShowAllTexts;
+begin
+  FTextHidden := nil;
 end;
 
 procedure TRtSvgImage.LoadFromString(const AData: RawByteString);
