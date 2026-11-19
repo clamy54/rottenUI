@@ -2812,10 +2812,18 @@ var
   px, py: array of Double;
   qx, qy: array of Double;
   d: string;
+  pad: Double;                     // how far a stroke's ink reaches past its line
 
   function N(AValue: Double): string;
   begin
     Result := FormatFloat('0.###', AValue, Dot);
+  end;
+
+  { (Codex review 157) A factor or a size: every digit that counts (a text
+    of size 50000 drawn at 0.0002 must not vanish). }
+  function P(AValue: Double): string;
+  begin
+    Result := FormatFloat('0.############', AValue, Dot);
   end;
 
   function Grey(ALum: Single): string;
@@ -2981,7 +2989,7 @@ var
     t1 := 1;
     dx := X1 - X0;
     dy := Y1 - Y0;
-    Result := Edge(-dx, X0) and Edge(dx, AW - X0) and Edge(-dy, Y0) and Edge(dy, AH - Y0);
+    Result := Edge(-dx, X0 + pad) and Edge(dx, AW + pad - X0) and Edge(-dy, Y0 + pad) and Edge(dy, AH + pad - Y0);
     if not Result then Exit;
     X1 := X0 + t1 * dx;
     Y1 := Y0 + t1 * dy;
@@ -3001,7 +3009,7 @@ var
     RtSvgApply(m, tx.X, tx.Y, x, y);
     // kept whole when its anchor is inside
     if IsNan(x) or IsNan(y) or (x < 0) or (y < 0) or (x > AW) or (y > AH) or (tx.Text = '') then Exit;
-    attrs := ' font-size="' + N(tx.Size) + '" fill="' + Grey(tx.Lum) + '"';
+    attrs := ' font-size="' + P(tx.Size) + '" fill="' + Grey(tx.Lum) + '"';
     if tx.Alpha < 0.999 then attrs := attrs + ' fill-opacity="' + N(tx.Alpha) + '"';
     if tx.Mono then attrs := attrs + ' font-family="monospace"' else attrs := attrs + ' font-family="sans-serif"';
     if tx.Bold then attrs := attrs + ' font-weight="bold"';
@@ -3014,8 +3022,9 @@ var
       1: attrs := attrs + ' dominant-baseline="central"';
       2: attrs := attrs + ' dominant-baseline="hanging"';
     end;
-    Put('<text x="' + N(tx.X) + '" y="' + N(tx.Y) + '"' + attrs + ' transform="matrix(' + N(m.A) + ' ' + N(m.B) + ' ' +
-      N(m.C) + ' ' + N(m.D) + ' ' + N(m.E) + ' ' + N(m.F) + ')">' + Xml(tx.Text) + '</text>' + LineEnding);
+    // its anchor at the matrix's origin: the new image's pixels, exactly
+    Put('<text x="0" y="0"' + attrs + ' transform="matrix(' + P(m.A) + ' ' + P(m.B) + ' ' + P(m.C) + ' ' + P(m.D) +
+      ' ' + N(x) + ' ' + N(y) + ')">' + Xml(tx.Text) + '</text>' + LineEnding);
     AKept[AIndex] := newText;
     Inc(newText);
   end;
@@ -3033,21 +3042,93 @@ var
   procedure WriteShape(AIndex: Integer);
   var
     sh: TRtSvgShape;
-    m, e, run, s, cnt: Integer;
-    x0, y0, x1, y1, ax, ay, bx, by, dist, seg, offStart: Double;
-    stroke: string;
-    inRun: Boolean;
+    m, e, j, run, s, cnt, first, di: Integer;
+    x0, y0, x1, y1, ax, ay, bx, by, dist, seg, offStart, dOffset, period, remain: Double;
+    stroke, all: string;
+    inRun, whole, bake, penDown: Boolean;
     dash: string;
+    dashes: array of Double;
 
     procedure Flush(var APath: string; AOffset: Double);
     begin
       if APath = '' then Exit;
-      if dash <> '' then
-        Put('<path d="' + APath + '"' + stroke + ' stroke-dashoffset="' + N(sh.DashOffset * k + AOffset) + '"/>' +
-          LineEnding)
-      else
-        Put('<path d="' + APath + '"' + stroke + '/>' + LineEnding);
+      Put('<path d="' + APath + '"' + stroke + ' stroke-dashoffset="' + N(sh.DashOffset * k + AOffset) + '"/>' +
+        LineEnding);
       APath := '';
+    end;
+
+    { Segment AE of subpath s wholly inside the widened frame. }
+    function SegKept(AE: Integer): Boolean;
+    var
+      cx0, cy0, cx1, cy1: Double;
+    begin
+      cx0 := f.X[f.Starts[s] + AE];
+      cy0 := f.Y[f.Starts[s] + AE];
+      cx1 := f.X[f.Starts[s] + (AE + 1) mod cnt];
+      cy1 := f.Y[f.Starts[s] + (AE + 1) mod cnt];
+      Result := ClipSegment(cx0, cy0, cx1, cy1) and (cx0 = f.X[f.Starts[s] + AE]) and
+        (cy0 = f.Y[f.Starts[s] + AE]) and (cx1 = f.X[f.Starts[s] + (AE + 1) mod cnt]) and
+        (cy1 = f.Y[f.Starts[s] + (AE + 1) mod cnt]);
+    end;
+
+    function Outside(AX, AY: Double): Boolean;
+    begin
+      Result := not ((AX >= -pad) and (AX <= AW + pad) and (AY >= -pad) and (AY <= AH + pad));
+    end;
+
+    { The dash pattern at APos along the stroke (as the painter starts it). }
+    procedure PhaseAt(APos: Double);
+    begin
+      APos := FMod(APos, period);
+      if APos < 0 then APos := APos + period;
+      di := 0;
+      while (APos >= dashes[di]) and (APos > 0) do
+      begin
+        APos := APos - dashes[di];
+        di := (di + 1) mod Length(dashes);
+      end;
+      remain := Max(0, dashes[di] - APos);
+      penDown := False;
+    end;
+
+    { The dashes along a piece of a run, as subpaths of the element; a dash
+      going on past a corner keeps its join. }
+    procedure Walk(AX0, AY0, AX1, AY1: Double);
+    var
+      len, ux, uy, tt: Double;
+      guard: Integer;
+    begin
+      len := Hypot(AX1 - AX0, AY1 - AY0);
+      if not (len > 0) then Exit;
+      ux := (AX1 - AX0) / len;
+      uy := (AY1 - AY0) / len;
+      tt := 0;
+      if not Odd(di) and not penDown then
+      begin
+        all := all + 'M' + N(AX0) + ' ' + N(AY0);
+        penDown := True;
+      end;
+      guard := 0;
+      while len - tt > remain do
+      begin
+        tt := tt + remain;
+        if not Odd(di) then
+        begin
+          all := all + 'L' + N(AX0 + ux * tt) + ' ' + N(AY0 + uy * tt);
+          penDown := False;
+        end;
+        di := (di + 1) mod Length(dashes);
+        remain := dashes[di];
+        if not Odd(di) then
+        begin
+          all := all + 'M' + N(AX0 + ux * tt) + ' ' + N(AY0 + uy * tt);
+          penDown := True;
+        end;
+        Inc(guard);
+        if (guard and 1023 = 0) and (Length(all) > RTSVG_CROP_MAX_BYTES) then TooBig('cropped image');
+      end;
+      remain := remain - (len - tt);
+      if not Odd(di) then all := all + 'L' + N(AX1) + ' ' + N(AY1);
     end;
 
   begin
@@ -3058,9 +3139,14 @@ var
     f := Default(TFlat);
     Flatten(AImage, sh, t, AW, AH, 1e300, f);
     if f.Bad or (f.Count = 0) then Exit;
+    // (Codex review 157) Strokes cut beyond the frame by their reach (half
+    // their width, a square cap's corner, a miter's tip): their ink inside
+    // the frame stays whole, the new image's edge cuts the rest.
+    if sh.StrokeAlpha <= 0 then pad := 0
+    else if sh.Join in [rjRound, rjBevel] then pad := sh.StrokeWidth * k * 0.75 + 1
+    else pad := sh.StrokeWidth * k * 0.5 * Max(sh.MiterLimit, 1.5) + 1;
     // nothing of it inside (its stroke counted)
-    if (f.MaxX < -sh.StrokeWidth * k) or (f.MaxY < -sh.StrokeWidth * k) or (f.MinX > AW + sh.StrokeWidth * k) or
-      (f.MinY > AH + sh.StrokeWidth * k) then Exit;
+    if (f.MaxX < -pad) or (f.MaxY < -pad) or (f.MinX > AW + pad) or (f.MinY > AH + pad) then Exit;
     if sh.FillAlpha > 0 then
     begin
       d := '';
@@ -3100,26 +3186,60 @@ var
       dash := '';
       if Length(sh.Dash) > 0 then
       begin
+        SetLength(dashes, Length(sh.Dash));
+        period := 0;
         for e := 0 to High(sh.Dash) do
         begin
+          dashes[e] := sh.Dash[e] * k;
+          period := period + dashes[e];
           if e > 0 then dash := dash + ' ';
-          dash := dash + N(sh.Dash[e] * k);
+          dash := dash + N(dashes[e]);
         end;
-        stroke := stroke + ' stroke-dasharray="' + dash + '"';
+        if not (period > 0) then dash := '';
       end;
+      // (Codex review 157) Translucent dashes drawn here as pieces of one
+      // element: their overlaps composited once, as in the original.
+      bake := (dash <> '') and (sh.StrokeAlpha < 0.999);
+      if (dash <> '') and not bake then stroke := stroke + ' stroke-dasharray="' + dash + '"';
+      all := '';
       for s := 0 to f.Subs - 1 do
       begin
         if s < f.Subs - 1 then cnt := f.Starts[s + 1] - f.Starts[s] else cnt := f.Count - f.Starts[s];
         if cnt < 2 then Continue;
+        if f.Closed[s] then run := cnt else run := cnt - 1;
+        // A closed subpath drawn plain: whole inside, it stays closed (its
+        // seam joined); else it starts after a segment cut, so that a run
+        // over its seam stays one. A dashed one starts where its pattern does.
+        first := 0;
+        whole := True;
+        for e := 0 to run - 1 do
+          if not SegKept(e) then
+          begin
+            whole := False;
+            // a vertex outside the frame: no run goes on through it
+            if f.Closed[s] and (dash = '') then
+              if Outside(f.X[f.Starts[s] + e], f.Y[f.Starts[s] + e]) then first := e
+              else first := (e + 1) mod cnt;
+            Break;
+          end;
+        if whole and f.Closed[s] and (dash = '') then
+        begin
+          all := all + 'M' + N(f.X[f.Starts[s]]) + ' ' + N(f.Y[f.Starts[s]]);
+          for e := 1 to cnt - 1 do all := all + 'L' + N(f.X[f.Starts[s] + e]) + ' ' + N(f.Y[f.Starts[s] + e]);
+          all := all + 'Z';
+          if Length(all) > RTSVG_CROP_MAX_BYTES then TooBig('cropped image');
+          Continue;
+        end;
         // its segments inside, in runs (a run broken where it leaves the
         // frame); a dashed run starts at the phase it had there
         d := '';
         inRun := False;
         dist := 0;
         offStart := 0;
-        if f.Closed[s] then run := cnt else run := cnt - 1;
-        for e := 0 to run - 1 do
+        dOffset := 0;
+        for j := 0 to run - 1 do
         begin
+          e := (first + j) mod cnt;
           ax := f.X[f.Starts[s] + e];
           ay := f.Y[f.Starts[s] + e];
           bx := f.X[f.Starts[s] + (e + 1) mod cnt];
@@ -3130,22 +3250,37 @@ var
           begin
             if not inRun then
             begin
-              if dash <> '' then Flush(d, offStart);
               offStart := dist + Hypot(x0 - ax, y0 - ay);
-              d := d + 'M' + N(x0) + ' ' + N(y0);
+              if bake then
+                PhaseAt(sh.DashOffset * k + offStart)
+              else if dash <> '' then
+              begin
+                Flush(d, dOffset);
+                dOffset := offStart;
+                d := 'M' + N(x0) + ' ' + N(y0);
+              end
+              else
+                all := all + 'M' + N(x0) + ' ' + N(y0);
               inRun := True;
             end;
-            d := d + 'L' + N(x1) + ' ' + N(y1);
+            if bake then Walk(x0, y0, x1, y1)
+            else if dash <> '' then d := d + 'L' + N(x1) + ' ' + N(y1)
+            else all := all + 'L' + N(x1) + ' ' + N(y1);
             // it leaves the frame on this segment: the run ends
             if (Abs(x1 - bx) > 1e-9) or (Abs(y1 - by) > 1e-9) then inRun := False;
           end
           else
             inRun := False;
+          if not inRun then penDown := False;
           dist := dist + seg;
-          if Length(d) > RTSVG_CROP_MAX_BYTES then TooBig('cropped image');
+          if (Length(d) > RTSVG_CROP_MAX_BYTES) or (Length(all) > RTSVG_CROP_MAX_BYTES) then
+            TooBig('cropped image');
         end;
-        Flush(d, offStart);
+        penDown := False;
+        if (dash <> '') and not bake then Flush(d, dOffset);
       end;
+      // the plain (or drawn dashed) runs of every subpath: one element
+      if all <> '' then Put('<path d="' + all + '"' + stroke + '/>' + LineEnding);
     end;
   end;
 
