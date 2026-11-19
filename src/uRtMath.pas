@@ -19,6 +19,8 @@ function RtArcTan2(Y, X: Double): Double;
 { The largest whole number not above X, as a double (any finite X: Floor
   is 32 bits). }
 function RtFloor(X: Double): Double;
+{ X modulo AM (AM > 0) in [0, AM), exactly (any finite X). }
+function RtFMod(X, AM: Double): Double;
 
 implementation
 
@@ -59,27 +61,42 @@ const
 
 function RtFloor(X: Double): Double;
 begin
+  // (Codex review 172) a zero keeps its sign, as every library does not
+  if X = 0 then Exit(X);
   Result := Int(X);
   if (X < 0) and (Result <> X) then Result := Result - 1;
+end;
+
+function RtFMod(X, AM: Double): Double;
+var
+  r, q: Double;
+  guard: Integer;
+begin
+  if IsNan(X) or IsInfinite(X) or IsNan(AM) or not (AM > 0) or IsInfinite(AM) then Exit(0);
+  // (Codex review 172) exact: multiples of AM by powers of two taken off,
+  // each subtraction exact (q <= r < 2 q)
+  r := Abs(X);
+  guard := 0;
+  while (r >= AM) and (guard < 100000) do
+  begin
+    q := AM;
+    while (q <= r / 2) do q := q * 2;
+    r := r - q;
+    Inc(guard);
+  end;
+  if (X < 0) and (r > 0) then r := AM - r;
+  if (r >= AM) or (r < 0) then r := 0;
+  Result := r;
 end;
 
 procedure Reduce(X: Double; out R: Double; out Q: Integer);
 var
   k: Double;
 begin
-  // (Codex review 170) a large angle first brought within a turn
-  // (deterministic, as exact as two parts of 2 pi allow; Codex review 171:
-  // a floor of any size, and beyond what a double holds of a turn, none)
-  if Abs(X) > 1e5 then
-  begin
-    if Abs(X) > 1e15 then X := 0
-    else
-    begin
-      k := RtFloor(X / TWOPI_1);
-      X := (X - k * TWOPI_1) - k * TWOPI_2;
-      if (X < -1) or (X > TWOPI_1 + 1) then X := 0;
-    end;
-  end;
+  // A large angle (beyond the turns a drawing uses) brought within a turn
+  // exactly modulo the double nearest 2 pi (Codex reviews 170 to 172):
+  // the same everywhere, though not the true sine of so many turns.
+  if Abs(X) > 1e5 then X := RtFMod(X, TWOPI_1);
   k := RtFloor(X * TWO_O_PI + 0.5);
   R := (X - k * PIO2_HI) - k * PIO2_LO;
   Q := Integer(Trunc(k - 4 * RtFloor(k / 4)));   // 0..3

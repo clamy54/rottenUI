@@ -159,6 +159,8 @@ end;
 
 function EllipseSteps(ARX, ARY: Double): Integer;
 begin
+  // (Codex review 172) a large one: all the table's steps, before Ceil
+  if IsNan(ARX) or IsNan(ARY) or (Max(Abs(ARX), Abs(ARY)) > 1000) then Exit(CIRCLE_STEPS);
   // one step about every 2 pixels of its circumference, 8 at least
   Result := EnsureRange(Ceil(Max(Abs(ARX), Abs(ARY)) * Pi / 2), 8, CIRCLE_STEPS);
   // a divisor of the table's steps, so that every point comes from the table
@@ -846,7 +848,8 @@ begin
       Continue;
     end;
     // dashed: the runs on, each an open line
-    pos := ADashOffset - Floor(ADashOffset / total) * total;
+    // (Codex review 172) the phase exactly within a period, whatever the offset
+    pos := RtFMod(ADashOffset, total);
     di := 0;
     guard := 0;
     while (pos >= dash[di]) and (guard < 1000) do
@@ -1044,7 +1047,7 @@ procedure TRtRaster.DrawRaster(const ASrc: array of LongWord; ASrcW, ASrcH: Inte
   ADX, ADY, ADW, ADH: Double);
 var
   x0, y0, x1, y1, x, y, ix, iy, fx, fy, ix1, iy1: Integer;
-  sxF, syF, kx, ky: Int64;
+  sxF, syF: Int64;
   p00, p01, p10, p11: LongWord;
   a, r, g, b, w00, w01, w10, w11: LongWord;
   col: LongWord;
@@ -1057,27 +1060,27 @@ var
 begin
   if (ASrcW <= 0) or (ASrcH <= 0) or (Length(ASrc) < ASrcW * ASrcH) or not (ADW > 0) or not (ADH > 0) or
     not (ASW > 0) or not (ASH > 0) then Exit;
-  // (Floor and Ceil are 32 bits: the place kept within reach first)
-  if (Abs(ADX) > 1e8) or (Abs(ADY) > 1e8) or (ADW > 1e8) or (ADH > 1e8) then Exit;
+  // (Floor and Ceil are 32 bits: the place kept within reach first;
+  // Codex review 172: a size of nothing, nothing drawn)
+  if (Abs(ADX) > 1e8) or (Abs(ADY) > 1e8) or (ADW > 1e8) or (ADH > 1e8) or (ADW < 1e-6) or (ADH < 1e-6) or
+    (ASW > 1e8) or (ASH > 1e8) or (Abs(ASX) > 1e8) or (Abs(ASY) > 1e8) then Exit;
   x0 := Max(FClipX0, Floor(ADX));
   y0 := Max(FClipY0, Floor(ADY));
   x1 := Min(FClipX1, Ceil(ADX + ADW));
   y1 := Min(FClipY1, Ceil(ADY + ADH));
   if (x1 <= x0) or (y1 <= y0) then Exit;
-  // source steps per destination pixel, in 1/65536
-  kx := Round(ASW / ADW * 65536);
-  ky := Round(ASH / ADH * 65536);
   for y := y0 to y1 - 1 do
   begin
     // the source point of this pixel's centre, minus half a source pixel
-    syF := Round((ASY + (y + 0.5 - ADY) * ASH / ADH) * 65536) - 32768;
+    // (Codex review 172) kept within the source's edges before any conversion
+    syF := Round(EnsureRange(ASY + (y + 0.5 - ADY) * ASH / ADH, -2, ASrcH + 2) * 65536) - 32768;
     iy := Integer(Floor(syF / 65536));
     fy := Integer(syF - Int64(iy) * 65536) shr 8;     // 0..255
     iy1 := EnsureRange(iy + 1, 0, ASrcH - 1);
     iy := EnsureRange(iy, 0, ASrcH - 1);
     for x := x0 to x1 - 1 do
     begin
-      sxF := Round((ASX + (x + 0.5 - ADX) * ASW / ADW) * 65536) - 32768;
+      sxF := Round(EnsureRange(ASX + (x + 0.5 - ADX) * ASW / ADW, -2, ASrcW + 2) * 65536) - 32768;
       ix := Integer(Floor(sxF / 65536));
       fx := Integer(sxF - Int64(ix) * 65536) shr 8;
       ix1 := EnsureRange(ix + 1, 0, ASrcW - 1);
@@ -1105,7 +1108,6 @@ begin
       BlendPixel(Pixels[y * FWidth + x], col, 255);
     end;
   end;
-  if kx + ky = 0 then Exit;
 end;
 
 procedure InitTables;
