@@ -50,6 +50,8 @@ ICONS = [
     # barres d'outils de plans et de dessins
     "map-pin-plus", "network", "background", "flag", "layout-align-left", "typography",
     "route", "current-location", "arrows-maximize", "rotate-clockwise",
+    # textes d'un plan
+    "text-plus", "text-increase", "text-decrease", "arrow-back-up", "arrow-forward-up",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

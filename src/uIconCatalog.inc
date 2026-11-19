@@ -1,6 +1,6 @@
 // Genere par tools/gen_icons.py; ne pas editer a la main.
 const
-  ICON_IDS: array[0..84] of string = (
+  ICON_IDS: array[0..89] of string = (
     'folder',
     'folder-open',
     'server',
@@ -85,5 +85,10 @@ const
     'route',
     'current-location',
     'arrows-maximize',
-    'rotate-clockwise');
+    'rotate-clockwise',
+    'text-plus',
+    'text-increase',
+    'text-decrease',
+    'arrow-back-up',
+    'arrow-forward-up');
   ICON_SIZES: array[0..6] of Integer = (16, 20, 24, 32, 40, 48, 64);
