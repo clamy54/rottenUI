@@ -14,7 +14,7 @@ uses
   uNoticeBanner, uThemedControls, uThemedSplitter, uDocTabBar, uRtStatusBar, 
   uRtLogList, uRtGauge, uRtProgress, uRtAbout, uRtWizard, uRtSecretEdit, 
   uRtPassword, uGtk3Style, uRtReport, uRtChips, uRtDatePicker, uRtFold, uRtSvg, 
-  uRtSvgPaint, uRtSlider;
+  uRtSvgPaint, uRtSlider, uRtFont, uRtRaster, uRtRasterLcl, uRtMath;
 
 implementation
 

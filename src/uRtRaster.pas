@@ -23,6 +23,7 @@ uses
 type
   TRtColor = LongWord;     // $AARRGGBB, straight alpha
   TRtCodePointArray = array of Cardinal;
+  TRtPixels = array of LongWord;   // $AARRGGBB
   TRtFillRule = (rfNonZero, rfEvenOdd);
   TRtLineCap = (lcButt, lcRound, lcSquare);
   TRtLineJoin = (ljMiter, ljRound, ljBevel);
@@ -39,7 +40,8 @@ type
   private
     FWidth, FHeight: Integer;
     FClipX0, FClipY0, FClipX1, FClipY1: Integer;
-    FCov: array of Integer;      // a row's coverage, scratch
+    FCov: array of Integer;      // a row's partial coverage, scratch
+    FDelta: array of Integer;    // its whole pixels as differences (summed along the row)
     procedure FillCoverage(const APath: TRtPath; AColor: TRtColor; ARule: TRtFillRule);
     procedure BlendSpan(AY, AX0: Integer; ACount: Integer; AColor: TRtColor);
   public
@@ -67,7 +69,13 @@ type
     procedure Line(AX0, AY0, AX1, AY1, AWidth: Double; AColor: TRtColor; ACap: TRtLineCap = lcButt);
     { AText (UTF-8) with its baseline's start at (AX, AY), its em ASize
       pixels, turned AAngle radians clockwise. }
-    procedure DrawText(AFont: TRtFont; const AText: string; AX, AY, ASize, AAngle: Double; AColor: TRtColor);
+    procedure DrawText(AFont: TRtFont; const AText: string; AX, AY, ASize, AAngle: Double; AColor: TRtColor;
+      AStretch: Double = 1);
+    { The same along the unit direction (AUX, AUY) (no angle). }
+    procedure DrawTextDir(AFont: TRtFont; const AText: string; AX, AY, ASize, AUX, AUY: Double; AColor: TRtColor;
+      AStretch: Double = 1);
+    { ASrc (ASrcW x ASrcH, opaque) copied as it is at (ADX, ADY), clipped. }
+    procedure CopyFrom(const ASrc: array of LongWord; ASrcW, ASrcH, ADX, ADY: Integer);
     { ASrc's zone (SX, SY, SW, SH) drawn into (DX, DY, DW, DH), filtered
       bilinearly (its alpha honoured; a source pixel is $AARRGGBB). }
     procedure DrawRaster(const ASrc: array of LongWord; ASrcW, ASrcH: Integer; ASX, ASY, ASW, ASH,
@@ -92,7 +100,7 @@ function RtRgb(AR, AG, AB: Byte; AA: Byte = 255): TRtColor;
 implementation
 
 uses
-  Math;
+  Math, uRtMath;
 
 const
   SUB = 16;                // rows sampled per pixel
@@ -207,7 +215,7 @@ end;
 
 function RtCodePoints(const AText: string): TRtCodePointArray;
 var
-  i, n, len, need: Integer;
+  i, n, len, need, k: Integer;
   c: Cardinal;
   b: Byte;
 begin
@@ -245,13 +253,16 @@ begin
       need := 0;
     end;
     Inc(i);
+    k := need;
     while (need > 0) and (i <= len) and (Ord(AText[i]) and $C0 = $80) do
     begin
       c := c shl 6 or (Ord(AText[i]) and $3F);
       Inc(i);
       Dec(need);
     end;
-    if need > 0 then c := $FFFD;
+    // (Codex review 169) broken, overlong, a surrogate or beyond U+10FFFF
+    if (need > 0) or ((k = 1) and (c < $80)) or ((k = 2) and (c < $800)) or ((k = 3) and (c < $10000)) or
+      ((c >= $D800) and (c <= $DFFF)) or (c > $10FFFF) then c := $FFFD;
     Result[n] := c;
     Inc(n);
   end;
@@ -303,11 +314,10 @@ end;
 
 procedure TRtRaster.Clear(AColor: TRtColor);
 var
-  i: Integer;
   c: LongWord;
 begin
   c := AColor or $FF000000;
-  for i := 0 to High(Pixels) do Pixels[i] := c;
+  if Length(Pixels) > 0 then FillDWord(Pixels[0], Length(Pixels), c);
 end;
 
 { Blend one pixel: its coverage ACov in 0..255 times the colour's alpha. }
@@ -346,11 +356,80 @@ type
     Dir: Integer;            // +1 downwards, -1 upwards
   end;
 
+{ The first ACount crossings sorted by x, then direction: an insertion sort
+  for a few, a merge sort beyond (ATx / ATd its scratch). }
+procedure SortCrossings(var AX: array of Int64; var AD: array of Integer; ACount: Integer;
+  var ATx: array of Int64; var ATd: array of Integer);
+var
+  width, lo, mid, hi, i, j, k: Integer;
+  t: Int64;
+  td: Integer;
+
+  function Less(AX1: Int64; AD1: Integer; AX2: Int64; AD2: Integer): Boolean; inline;
+  begin
+    Result := (AX1 < AX2) or ((AX1 = AX2) and (AD1 < AD2));
+  end;
+
+begin
+  if ACount <= 24 then
+  begin
+    for i := 1 to ACount - 1 do
+    begin
+      t := AX[i];
+      td := AD[i];
+      j := i;
+      while (j > 0) and Less(t, td, AX[j - 1], AD[j - 1]) do
+      begin
+        AX[j] := AX[j - 1];
+        AD[j] := AD[j - 1];
+        Dec(j);
+      end;
+      AX[j] := t;
+      AD[j] := td;
+    end;
+    Exit;
+  end;
+  width := 1;
+  while width < ACount do
+  begin
+    lo := 0;
+    while lo < ACount do
+    begin
+      mid := Min(lo + width, ACount);
+      hi := Min(lo + 2 * width, ACount);
+      i := lo;
+      j := mid;
+      k := lo;
+      while (i < mid) and (j < hi) do
+      begin
+        if Less(AX[j], AD[j], AX[i], AD[i]) then
+        begin
+          ATx[k] := AX[j]; ATd[k] := AD[j]; Inc(j);
+        end
+        else
+        begin
+          ATx[k] := AX[i]; ATd[k] := AD[i]; Inc(i);
+        end;
+        Inc(k);
+      end;
+      while i < mid do begin ATx[k] := AX[i]; ATd[k] := AD[i]; Inc(i); Inc(k); end;
+      while j < hi do begin ATx[k] := AX[j]; ATd[k] := AD[j]; Inc(j); Inc(k); end;
+      lo := hi;
+    end;
+    for i := 0 to ACount - 1 do
+    begin
+      AX[i] := ATx[i];
+      AD[i] := ATd[i];
+    end;
+    width := width * 2;
+  end;
+end;
+
 function FixOf(AValue: Double): Int64; inline;
 begin
   if IsNan(AValue) then Exit(0);
   AValue := EnsureRange(AValue, -1e7, 1e7);
-  Result := Floor(AValue * FIX + 0.5);
+  Result := Floor64(AValue * FIX + 0.5);   // (Floor is 32 bits)
 end;
 
 procedure TRtRaster.FillCoverage(const APath: TRtPath; AColor: TRtColor; ARule: TRtFillRule);
@@ -361,13 +440,13 @@ var
   minY, maxY, minX, maxX: Int64;
   py0, py1, px0, px1, y, k, w: Integer;
   ys: Int64;
-  xs: array of Int64;
-  ds: array of Integer;
+  xs, sxs: array of Int64;
+  ds, sds: array of Integer;
   nx, wind: Integer;
   tx: Int64;
   td: Integer;
   xa, xb: Int64;
-  pa, pb, x, cov: Integer;
+  pa, pb, x, cov, run: Integer;
   inside, was: Boolean;
 begin
   if (APath.Count < 3) or (FClipX1 <= FClipX0) or (FClipY1 <= FClipY0) then Exit;
@@ -417,11 +496,15 @@ begin
   if (py1 <= py0) or (px1 <= px0) then Exit;
   w := px1 - px0;
   if Length(FCov) < w + 2 then SetLength(FCov, w + 2);
+  if Length(FDelta) < w + 2 then SetLength(FDelta, w + 2);
   SetLength(xs, ne);
   SetLength(ds, ne);
+  SetLength(sxs, ne);
+  SetLength(sds, ne);
   for y := py0 to py1 - 1 do
   begin
-    for i := 0 to w + 1 do FCov[i] := 0;
+    FillDWord(FCov[0], w + 2, 0);
+    FillDWord(FDelta[0], w + 2, 0);
     for k := 0 to SUB - 1 do
     begin
       // the sampled row's centre
@@ -430,20 +513,17 @@ begin
       for i := 0 to ne - 1 do
         if (edges[i].Y0 <= ys) and (ys < edges[i].Y1) then
         begin
-          tx := edges[i].X0 + (ys - edges[i].Y0) * (edges[i].X1 - edges[i].X0) div (edges[i].Y1 - edges[i].Y0);
-          // sorted as it goes (few crossings per row)
-          j := nx;
-          while (j > 0) and ((xs[j - 1] > tx) or ((xs[j - 1] = tx) and (ds[j - 1] > edges[i].Dir))) do
-          begin
-            xs[j] := xs[j - 1];
-            ds[j] := ds[j - 1];
-            Dec(j);
-          end;
-          xs[j] := tx;
-          ds[j] := edges[i].Dir;
+          // (Codex review 169) in double: no overflow, and IEEE's correctly
+          // rounded operations give the same crossing everywhere
+          tx := edges[i].X0 + Trunc(Double(ys - edges[i].Y0) * Double(edges[i].X1 - edges[i].X0) /
+            Double(edges[i].Y1 - edges[i].Y0));
+          xs[nx] := tx;
+          ds[nx] := edges[i].Dir;
           Inc(nx);
         end;
       if nx < 2 then Continue;
+      // (Codex review 169) sorted in n log n (by x, then direction)
+      SortCrossings(xs, ds, nx, sxs, sds);
       wind := 0;
       was := False;
       xa := 0;
@@ -467,7 +547,12 @@ begin
             else
             begin
               Inc(FCov[pa], FIX - Integer(xa mod FIX));
-              for x := pa + 1 to pb - 1 do Inc(FCov[x], FIX);
+              // the whole pixels between: two differences, summed below
+              if pb > pa + 1 then
+              begin
+                Inc(FDelta[pa + 1], FIX);
+                Dec(FDelta[pb], FIX);
+              end;
               if pb <= w then Inc(FCov[pb], Integer(xb mod FIX));
             end;
           end;
@@ -476,9 +561,11 @@ begin
       end;
     end;
     // the row blended: coverage out of FULL brought to 0..255
+    run := 0;
     for x := 0 to w - 1 do
     begin
-      cov := FCov[x];
+      Inc(run, FDelta[x]);
+      cov := FCov[x] + run;
       if cov <= 0 then Continue;
       if cov >= FULL then cov := 255 else cov := (cov * 255 + FULL div 2) div FULL;
       BlendPixel(Pixels[y * FWidth + px0 + x], AColor, cov);
@@ -555,7 +642,7 @@ begin
       pts[n] := i;
       Inc(n);
     end;
-  if AClosed and (n > 2) and (Abs(AX[AFrom + pts[0]] - AX[AFrom + pts[n - 1]]) < 1e-9) and
+  if AClosed and (n >= 2) and (Abs(AX[AFrom + pts[0]] - AX[AFrom + pts[n - 1]]) < 1e-9) and
     (Abs(AY[AFrom + pts[0]] - AY[AFrom + pts[n - 1]]) < 1e-9) then Dec(n);
   if n = 1 then
   begin
@@ -572,7 +659,7 @@ begin
     Exit;
   end;
   if n < 2 then Exit;
-  if AClosed and (n > 2) then segs := n else segs := n - 1;
+  if AClosed and (n >= 2) then segs := n else segs := n - 1;
   for i := 0 to segs - 1 do
   begin
     a := AFrom + pts[i];
@@ -586,7 +673,7 @@ begin
     ex := 0;
     ey := 0;
     // a square cap lengthens the open ends by half the width
-    if (ACap = lcSquare) and not (AClosed and (n > 2)) then
+    if (ACap = lcSquare) and not (AClosed and (n >= 2)) then
     begin
       ex := dx / len * AHalf;
       ey := dy / len * AHalf;
@@ -595,7 +682,7 @@ begin
     px[1] := AX[b] + nx; py[1] := AY[b] + ny;
     px[2] := AX[b] - nx; py[2] := AY[b] - ny;
     px[3] := AX[a] - nx; py[3] := AY[a] - ny;
-    if ex <> 0 then
+    if (ex <> 0) or (ey <> 0) then
     begin
       if (i = 0) then
       begin
@@ -613,7 +700,7 @@ begin
   // the joins, at every inner point (every point of a closed line)
   for i := 0 to n - 1 do
   begin
-    if not (AClosed and (n > 2)) and ((i = 0) or (i = n - 1)) then Continue;
+    if not (AClosed and (n >= 2)) and ((i = 0) or (i = n - 1)) then Continue;
     a := AFrom + pts[(i + n - 1) mod n];
     b := AFrom + pts[i];
     c := AFrom + pts[(i + 1) mod n];
@@ -627,12 +714,14 @@ begin
     ux1 := dx / len; uy1 := dy / len;
     cross := ux0 * uy1 - uy0 * ux1;
     dot := ux0 * ux1 + uy0 * uy1;
-    if Abs(cross) < 1e-9 then Continue;      // straight on
+    if (Abs(cross) < 1e-9) and (dot > 0) then Continue;      // straight on
     if AJoin = ljRound then
     begin
       AddDisc(AOut, AX[b], AY[b], AHalf);
       Continue;
     end;
+    // (Codex review 169) a turn back: no miter, no bevel to add
+    if Abs(cross) < 1e-9 then Continue;
     // the outer side: where the line turns away from
     if cross > 0 then
     begin
@@ -666,7 +755,7 @@ begin
     AddPiece(AOut, px, py, 3);
   end;
   // round caps at the open ends
-  if (ACap = lcRound) and not (AClosed and (n > 2)) then
+  if (ACap = lcRound) and not (AClosed and (n >= 2)) then
   begin
     AddDisc(AOut, AX[AFrom + pts[0]], AY[AFrom + pts[0]], AHalf);
     AddDisc(AOut, AX[AFrom + pts[n - 1]], AY[AFrom + pts[n - 1]], AHalf);
@@ -675,61 +764,93 @@ end;
 
 procedure TRtRaster.StrokePath(const APath: TRtPath; AClosed: Boolean; AWidth: Double; AColor: TRtColor;
   ACap: TRtLineCap; AJoin: TRtLineJoin; AMiterLimit: Double; const ADash: array of Double; ADashOffset: Double);
+type
+  TRun = record
+    X, Y: array of Double;
+    N: Integer;
+    FromStart, ToEnd: Boolean;     // it starts at the contour's start / ends at its end
+  end;
 var
   outline: TRtPath;
-  c, first, last, n, i, di, guard: Integer;
+  c, first, last, n, i, di, guard, k, nd: Integer;
   total, pos, remain, seg, t, ax, ay, bx, by: Double;
   on_: Boolean;
-  dx, dy: array of Double;
-  dn: Integer;
+  dash: array of Double;
+  runs: array of TRun;
+  nr: Integer;
+  joined: TRun;
 
-  procedure FlushDash;
+  procedure StartRun(AX, AY: Double; AFromStart: Boolean);
   begin
-    if dn >= 2 then StrokePolyline(outline, dx, dy, 0, dn, False, AWidth / 2, ACap, AJoin, AMiterLimit)
-    else if (dn = 1) and (ACap <> lcButt) then StrokePolyline(outline, dx, dy, 0, 1, False, AWidth / 2, ACap, AJoin, AMiterLimit);
-    dn := 0;
+    if nr >= Length(runs) then SetLength(runs, Max(8, 2 * Length(runs)));
+    runs[nr] := Default(TRun);
+    runs[nr].FromStart := AFromStart;
+    Inc(nr);
+    SetLength(runs[nr - 1].X, 8);
+    SetLength(runs[nr - 1].Y, 8);
+    runs[nr - 1].X[0] := AX;
+    runs[nr - 1].Y[0] := AY;
+    runs[nr - 1].N := 1;
   end;
 
-  procedure AddDash(AX, AY: Double);
+  procedure AddRun(AX, AY: Double);
   begin
-    if dn >= Length(dx) then
+    with runs[nr - 1] do
     begin
-      SetLength(dx, Max(16, 2 * Length(dx)));
-      SetLength(dy, Length(dx));
+      if N >= Length(X) then
+      begin
+        SetLength(X, 2 * Length(X));
+        SetLength(Y, Length(X));
+      end;
+      X[N] := AX;
+      Y[N] := AY;
+      Inc(N);
     end;
-    dx[dn] := AX;
-    dy[dn] := AY;
-    Inc(dn);
+  end;
+
+  procedure StrokeRun(const ARun: TRun; AAsClosed: Boolean);
+  begin
+    if ARun.N >= 2 then
+      StrokePolyline(outline, ARun.X, ARun.Y, 0, ARun.N, AAsClosed, AWidth / 2, ACap, AJoin, AMiterLimit)
+    else if (ARun.N = 1) and (ACap <> lcButt) then
+      StrokePolyline(outline, ARun.X, ARun.Y, 0, 1, False, AWidth / 2, ACap, AJoin, AMiterLimit);
   end;
 
 begin
   if (AColor shr 24 = 0) or not (AWidth > 0) or (APath.Count < 1) then Exit;
   outline := Default(TRtPath);
+  // (Codex review 169) an odd pattern repeated twice: on and off alternate
+  nd := Length(ADash);
+  if Odd(nd) then nd := 2 * nd;
+  SetLength(dash, nd);
+  for i := 0 to nd - 1 do dash[i] := Max(0, ADash[i mod Length(ADash)]);
   total := 0;
-  for i := 0 to High(ADash) do total := total + Max(0, ADash[i]);
+  for i := 0 to nd - 1 do total := total + dash[i];
   for c := 0 to APath.Contours - 1 do
   begin
     first := APath.Starts[c];
     if c < APath.Contours - 1 then last := APath.Starts[c + 1] - 1 else last := APath.Count - 1;
     n := last - first + 1;
     if n < 1 then Continue;
-    if (Length(ADash) = 0) or not (total > 0) then
+    if (nd = 0) or not (total > 0) then
     begin
       StrokePolyline(outline, APath.Xs, APath.Ys, first, n, AClosed, AWidth / 2, ACap, AJoin, AMiterLimit);
       Continue;
     end;
-    // dashed: the pieces on, each stroked as an open line
+    // dashed: the runs on, each an open line
     pos := ADashOffset - Floor(ADashOffset / total) * total;
     di := 0;
-    while pos >= Max(0, ADash[di]) do
+    guard := 0;
+    while (pos >= dash[di]) and (guard < 1000) do
     begin
-      pos := pos - Max(0, ADash[di]);
-      di := (di + 1) mod Length(ADash);
+      pos := pos - dash[di];
+      di := (di + 1) mod nd;
+      Inc(guard);
     end;
-    remain := Max(0, ADash[di]) - pos;
+    remain := dash[di] - pos;
     on_ := not Odd(di);
-    dn := 0;
-    if on_ then AddDash(APath.Xs[first], APath.Ys[first]);
+    nr := 0;
+    if on_ then StartRun(APath.Xs[first], APath.Ys[first], True);
     guard := 0;
     for i := 0 to n - 1 + Ord(AClosed) - 1 do
     begin
@@ -743,20 +864,41 @@ begin
       begin
         Inc(guard);
         t := t + remain;
-        if on_ then
-        begin
-          AddDash(ax + (bx - ax) * t / seg, ay + (by - ay) * t / seg);
-          FlushDash;
-        end;
-        di := (di + 1) mod Length(ADash);
-        remain := Max(0, ADash[di]);
+        if on_ then AddRun(ax + (bx - ax) * t / seg, ay + (by - ay) * t / seg);
+        di := (di + 1) mod nd;
+        remain := dash[di];
         on_ := not on_;
-        if on_ then AddDash(ax + (bx - ax) * t / seg, ay + (by - ay) * t / seg);
+        if on_ then StartRun(ax + (bx - ax) * t / seg, ay + (by - ay) * t / seg, False);
       end;
       remain := remain - (seg - t);
-      if on_ then AddDash(bx, by);
+      if on_ then AddRun(bx, by);
     end;
-    FlushDash;
+    if on_ and (nr > 0) then runs[nr - 1].ToEnd := True;
+    // (Codex review 169) a closed contour: the last run goes on into the
+    // first across the seam; all of it on, it is stroked closed
+    if AClosed and (nr >= 1) and runs[0].FromStart and runs[nr - 1].ToEnd then
+    begin
+      if nr = 1 then
+      begin
+        StrokeRun(runs[0], True);
+        Continue;
+      end;
+      joined := runs[nr - 1];
+      for k := 1 to runs[0].N - 1 do
+      begin
+        if joined.N >= Length(joined.X) then
+        begin
+          SetLength(joined.X, 2 * Length(joined.X) + 8);
+          SetLength(joined.Y, Length(joined.X));
+        end;
+        joined.X[joined.N] := runs[0].X[k];
+        joined.Y[joined.N] := runs[0].Y[k];
+        Inc(joined.N);
+      end;
+      runs[0] := joined;
+      Dec(nr);
+    end;
+    for k := 0 to nr - 1 do StrokeRun(runs[k], False);
   end;
   FillCoverage(outline, AColor, rfNonZero);
 end;
@@ -832,7 +974,15 @@ begin
   StrokePath(p, False, AWidth, AColor, ACap, ljMiter, 4, []);
 end;
 
-procedure TRtRaster.DrawText(AFont: TRtFont; const AText: string; AX, AY, ASize, AAngle: Double; AColor: TRtColor);
+procedure TRtRaster.DrawText(AFont: TRtFont; const AText: string; AX, AY, ASize, AAngle: Double; AColor: TRtColor;
+  AStretch: Double);
+begin
+  if AAngle = 0 then DrawTextDir(AFont, AText, AX, AY, ASize, 1, 0, AColor, AStretch)
+  else DrawTextDir(AFont, AText, AX, AY, ASize, RtCos(AAngle), RtSin(AAngle), AColor, AStretch);
+end;
+
+procedure TRtRaster.DrawTextDir(AFont: TRtFont; const AText: string; AX, AY, ASize, AUX, AUY: Double;
+  AColor: TRtColor; AStretch: Double);
 var
   cps: TRtCodePointArray;
   flat: TRtFlatGlyph;
@@ -843,18 +993,20 @@ begin
   if (AFont = nil) or (AText = '') or not (ASize > 0.2) or (ASize > 20000) or (AColor shr 24 = 0) then Exit;
   cps := RtCodePoints(AText);
   s := ASize / AFont.UnitsPerEm;
-  co := Cos(AAngle);
-  si := Sin(AAngle);
+  co := AUX;
+  si := AUY;
+  if IsNan(co) or IsNan(si) then Exit;
   if Abs(co) < 1e-15 then co := 0;
   if Abs(si) < 1e-15 then si := 0;
+  if not (AStretch > 0.01) or (AStretch > 100) then AStretch := 1;
   flat := Default(TRtFlatGlyph);
   pen := 0;
   for i := 0 to High(cps) do
   begin
     g := AFont.GlyphIndex(cps[i]);
-    // x' = O + s (pen + gx) u + s gy up, u = (cos, sin), up = (sin, -cos)
-    RtFlattenGlyph(AFont.Outline(g), s * co, s * si, s * si, -s * co, AX + s * co * pen, AY + s * si * pen,
-      0.2, flat);
+    // x' = O + s k (pen + gx) u + s gy up, u = (cos, sin), up = (sin, -cos), k the stretch
+    RtFlattenGlyph(AFont.Outline(g), s * AStretch * co, s * AStretch * si, s * si, -s * co,
+      AX + s * AStretch * co * pen, AY + s * AStretch * si * pen, 0.2, flat);
     pen := pen + AFont.Advance(g);
   end;
   if flat.Count < 3 then Exit;
@@ -864,6 +1016,19 @@ begin
   path.Count := flat.Count;
   path.Contours := flat.Contours;
   FillCoverage(path, AColor, rfNonZero);
+end;
+
+procedure TRtRaster.CopyFrom(const ASrc: array of LongWord; ASrcW, ASrcH, ADX, ADY: Integer);
+var
+  y, x0, x1, n: Integer;
+begin
+  if (ASrcW <= 0) or (ASrcH <= 0) or (Length(ASrc) < ASrcW * ASrcH) then Exit;
+  x0 := Max(FClipX0, ADX);
+  x1 := Min(FClipX1, ADX + ASrcW);
+  n := x1 - x0;
+  if n <= 0 then Exit;
+  for y := Max(FClipY0, ADY) to Min(FClipY1, ADY + ASrcH) - 1 do
+    Move(ASrc[(y - ADY) * ASrcW + (x0 - ADX)], Pixels[y * FWidth + x0], n * SizeOf(LongWord));
 end;
 
 procedure TRtRaster.DrawRaster(const ASrc: array of LongWord; ASrcW, ASrcH: Integer; ASX, ASY, ASW, ASH,
@@ -883,6 +1048,8 @@ var
 begin
   if (ASrcW <= 0) or (ASrcH <= 0) or (Length(ASrc) < ASrcW * ASrcH) or not (ADW > 0) or not (ADH > 0) or
     not (ASW > 0) or not (ASH > 0) then Exit;
+  // (Floor and Ceil are 32 bits: the place kept within reach first)
+  if (Abs(ADX) > 1e8) or (Abs(ADY) > 1e8) or (ADW > 1e8) or (ADH > 1e8) then Exit;
   x0 := Max(FClipX0, Floor(ADX));
   y0 := Max(FClipY0, Floor(ADY));
   x1 := Min(FClipX1, Ceil(ADX + ADW));
@@ -936,16 +1103,17 @@ procedure InitTables;
 var
   i: Integer;
 begin
+  // (Codex review 169) rottenUI's own trigonometry: the same table on
+  // every system (the platform's last bits moved a pixel)
   for i := 0 to CIRCLE_STEPS do
   begin
-    CosTab[i] := Cos(2 * Pi * i / CIRCLE_STEPS);
-    SinTab[i] := Sin(2 * Pi * i / CIRCLE_STEPS);
+    CosTab[i] := RtCos(2 * 3.141592653589793116 * i / CIRCLE_STEPS);
+    SinTab[i] := RtSin(2 * 3.141592653589793116 * i / CIRCLE_STEPS);
   end;
-  // exact where they are known, whatever the library's last bit
   for i := 0 to 4 do
   begin
-    CosTab[i * CIRCLE_STEPS div 4] := Round(Cos(i * Pi / 2));
-    SinTab[i * CIRCLE_STEPS div 4] := Round(Sin(i * Pi / 2));
+    CosTab[i * CIRCLE_STEPS div 4] := Round(RtCos(i * 3.141592653589793116 / 2));
+    SinTab[i * CIRCLE_STEPS div 4] := Round(RtSin(i * 3.141592653589793116 / 2));
   end;
 end;
 

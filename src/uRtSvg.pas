@@ -152,7 +152,7 @@ procedure RtSvgApply(const AM: TRtSvgMatrix; X, Y: Double; out AX, AY: Double);
 implementation
 
 uses
-  StrUtils;
+  StrUtils, uRtMath;
 
 const
   CMD_MOVE = 0;
@@ -822,16 +822,16 @@ begin
     else if (name = 'rotate') and (k in [1, 3]) then
     begin
       ang := DegToRad(a[0]);
-      c := Cos(ang);
-      sn := Sin(ang);
+      c := RtCos(ang);
+      sn := RtSin(ang);
       t := RtSvgMatrix(c, sn, -sn, c, 0, 0);
       if k = 3 then
         t := RtSvgMul(RtSvgTranslate(a[1], a[2]), RtSvgMul(t, RtSvgTranslate(-a[1], -a[2])));
     end
     else if (name = 'skewx') and (k = 1) then
-      t := RtSvgMatrix(1, 0, Tan(DegToRad(a[0])), 1, 0, 0)
+      t := RtSvgMatrix(1, 0, RtTan(DegToRad(a[0])), 1, 0, 0)
     else if (name = 'skewy') and (k = 1) then
-      t := RtSvgMatrix(1, Tan(DegToRad(a[0])), 0, 1, 0, 0)
+      t := RtSvgMatrix(1, RtTan(DegToRad(a[0])), 0, 1, 0, 0)
     else
       Exit(False);
     AM := RtSvgMul(AM, t);
@@ -1325,7 +1325,7 @@ end;
 
 function VecAngle(UX, UY, VX, VY: Double): Double;
 begin
-  Result := ArcTan2(UX * VY - UY * VX, UX * VX + UY * VY);
+  Result := RtArcTan2(UX * VY - UY * VX, UX * VX + UY * VY);
 end;
 
 { The arc from (X0, Y0) to (X, Y) as cubics (SVG implementation notes F.6). }
@@ -1352,8 +1352,8 @@ begin
     AddCmd(CMD_LINE, [X, Y]);
     Exit;
   end;
-  cp := Cos(DegToRad(APhi));
-  sp := Sin(DegToRad(APhi));
+  cp := RtCos(DegToRad(APhi));
+  sp := RtSin(DegToRad(APhi));
   x1 := cp * (X0 - X) / 2 + sp * (Y0 - Y) / 2;
   y1 := -sp * (X0 - X) / 2 + cp * (Y0 - Y) / 2;
   lam := Sqr(x1) / Sqr(RX) + Sqr(y1) / Sqr(RY);
@@ -1376,13 +1376,13 @@ begin
   else if ASweep and (dth < 0) then dth := dth + 2 * Pi;
   n := Max(1, Ceil(Abs(dth) / (Pi / 2) - 1e-9));
   dlt := dth / n;
-  t := 4 / 3 * Tan(dlt / 4);
+  t := 4 / 3 * RtTan(dlt / 4);
   for i := 0 to n - 1 do
   begin
     a1 := th1 + i * dlt;
     a2 := a1 + dlt;
-    ux1 := Cos(a1); uy1 := Sin(a1);
-    ux2 := Cos(a2); uy2 := Sin(a2);
+    ux1 := RtCos(a1); uy1 := RtSin(a1);
+    ux2 := RtCos(a2); uy2 := RtSin(a2);
     c1x := ux1 - t * uy1; c1y := uy1 + t * ux1;
     c2x := ux2 + t * uy2; c2y := uy2 - t * ux2;
     Map(c1x, c1y, p1x, p1y);
@@ -2228,8 +2228,8 @@ begin
   for i := 0 to n - 1 do
   begin
     a := 2 * Pi * i / n;
-    Pts[2 * i] := CX + R * Cos(a);
-    Pts[2 * i + 1] := CY + R * Sin(a);
+    Pts[2 * i] := CX + R * RtCos(a);
+    Pts[2 * i + 1] := CY + R * RtSin(a);
   end;
   PolyPositive(n);
 end;

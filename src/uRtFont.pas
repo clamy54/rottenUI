@@ -37,6 +37,7 @@ type
     FHmtx, FLoca, FGlyf, FGlyfLen, FLocaLen, FHmtxLen: Integer;
     FCmap: Integer;                // the chosen subtable's offset, 0 none
     FCmapFormat: Integer;
+    FCmapEnd: Integer;             // its end (its declared length, within the table)
     FOutlines: array of TRtGlyphOutline;
     FLoaded: array of Boolean;
     FAdvances: array of Integer;
@@ -46,7 +47,10 @@ type
     function U32(AOfs: Integer): Cardinal;
     function Table(const ATag: string; out ALen: Integer): Integer;
     procedure Need(AOfs, ALen: Integer);
-    procedure ReadGlyph(AGlyph, ADepth: Integer; var AOut: TRtGlyphOutline; const AM: array of Double);
+    procedure ReadGlyph(AGlyph, ADepth: Integer; var AOut: TRtGlyphOutline; const AM: array of Double;
+      var ABudget: Integer);
+    function CU16(AOfs: Integer): Integer;
+    function CU32(AOfs: Integer): Cardinal;
     function GlyphRange(AGlyph: Integer; out AOfs, ALen: Integer): Boolean;
   public
     { The font in AData (a .ttf file's bytes); raises ERtFont. }
@@ -145,7 +149,8 @@ end;
 
 constructor TRtFont.Create(const AData: RawByteString);
 var
-  head, hhea, maxp, cmap, len, n, i, rec, sub, best, bestRank, rank, fmt: Integer;
+  head, hhea, maxp, cmap, len, n, i, rec, sub, best, bestRank, rank, fmt, bestEnd: Integer;
+  sublen: Int64;
   version: Cardinal;
 begin
   inherited Create;
@@ -187,25 +192,43 @@ begin
     if n > 64 then n := 64;
     best := 0;
     bestRank := 0;
+    bestEnd := 0;
+    sublen := 0;
     for i := 0 to n - 1 do
     begin
       rec := cmap + 4 + 8 * i;
+      // (Codex review 169) the record and its subtable within the table
+      if rec + 8 > cmap + len then Break;
+      if U32(rec + 4) > Cardinal(len) then Continue;
       sub := cmap + Integer(U32(rec + 4));
-      if (sub < cmap) or (sub + 4 > cmap + len) then Continue;
+      if sub + 16 > cmap + len then Continue;
       fmt := U16(sub);
       rank := 0;
-      if fmt = 12 then rank := 2 else if fmt = 4 then rank := 1;
+      if fmt = 12 then
+      begin
+        sublen := Int64(U32(sub + 4));
+        if (sublen >= 16) and (sub + sublen <= cmap + len) and
+          (16 + 12 * Int64(U32(sub + 12)) <= sublen) then rank := 2;
+      end
+      else if fmt = 4 then
+      begin
+        sublen := U16(sub + 2);
+        if (sublen >= 16) and (sub + sublen <= cmap + len) and (16 + 4 * Int64(U16(sub + 6)) <= sublen) then
+          rank := 1;
+      end;
       if (U16(rec) = 1) then rank := 0;         // Macintosh encodings: no
       if rank > bestRank then
       begin
         bestRank := rank;
         best := sub;
+        bestEnd := sub + Integer(sublen);
       end;
     end;
     if best <> 0 then
     begin
       FCmap := best;
       FCmapFormat := U16(best);
+      FCmapEnd := bestEnd;
     end;
   end;
   SetLength(FOutlines, FNumGlyphs);
@@ -214,6 +237,18 @@ begin
   for i := 0 to FNumGlyphs - 1 do
     if i < FNumHMetrics then FAdvances[i] := U16(FHmtx + 4 * i)
     else FAdvances[i] := FAdvances[FNumHMetrics - 1];
+end;
+
+function TRtFont.CU16(AOfs: Integer): Integer;
+begin
+  if (AOfs < FCmap) or (AOfs + 2 > FCmapEnd) then raise ERtFont.Create('font: cmap read out of its table');
+  Result := U16(AOfs);
+end;
+
+function TRtFont.CU32(AOfs: Integer): Cardinal;
+begin
+  if (AOfs < FCmap) or (AOfs + 4 > FCmapEnd) then raise ERtFont.Create('font: cmap read out of its table');
+  Result := U32(AOfs);
 end;
 
 function TRtFont.GlyphIndex(ACode: Cardinal): Integer;
@@ -225,10 +260,11 @@ var
 begin
   Result := 0;
   if FCmap = 0 then Exit;
+  try
   if FCmapFormat = 4 then
   begin
     if ACode > $FFFF then Exit;
-    segX2 := U16(FCmap + 6);
+    segX2 := CU16(FCmap + 6);
     segs := segX2 div 2;
     if segs = 0 then Exit;
     endOfs := FCmap + 14;
@@ -241,25 +277,25 @@ begin
     while lo < hi do
     begin
       mid := (lo + hi) div 2;
-      if U16(endOfs + 2 * mid) < Integer(ACode) then lo := mid + 1 else hi := mid;
+      if CU16(endOfs + 2 * mid) < Integer(ACode) then lo := mid + 1 else hi := mid;
     end;
-    e := U16(endOfs + 2 * lo);
-    st := U16(startOfs + 2 * lo);
+    e := CU16(endOfs + 2 * lo);
+    st := CU16(startOfs + 2 * lo);
     if (Integer(ACode) < st) or (Integer(ACode) > e) then Exit;
-    delta := I16(deltaOfs + 2 * lo);
-    ro := U16(rangeOfs + 2 * lo);
+    delta := SmallInt(CU16(deltaOfs + 2 * lo));
+    ro := CU16(rangeOfs + 2 * lo);
     if ro = 0 then
       Result := (Integer(ACode) + delta) and $FFFF
     else
     begin
       gOfs := rangeOfs + 2 * lo + ro + 2 * (Integer(ACode) - st);
-      n := U16(gOfs);
+      n := CU16(gOfs);
       if n <> 0 then Result := (n + delta) and $FFFF;
     end;
   end
   else if FCmapFormat = 12 then
   begin
-    groups := U32(FCmap + 12);
+    groups := CU32(FCmap + 12);
     if groups > 1000000 then Exit;
     l := 0;
     h := Int64(groups) - 1;
@@ -267,17 +303,21 @@ begin
     begin
       m := (l + h) div 2;
       g := FCmap + 16 + Cardinal(m) * 12;
-      sc := U32(g);
-      ec := U32(g + 4);
+      sc := CU32(g);
+      ec := CU32(g + 4);
       if ACode < sc then h := m - 1
       else if ACode > ec then l := m + 1
       else
       begin
-        sg := U32(g + 8);
+        sg := CU32(g + 8);
         Result := Integer(sg + (ACode - sc));
         Break;
       end;
     end;
+  end;
+  except
+    // (Codex review 169) a damaged cmap: no glyph, never an error at each frame
+    on ERtFont do Result := 0;
   end;
   if (Result < 0) or (Result >= FNumGlyphs) then Result := 0;
 end;
@@ -315,7 +355,8 @@ begin
   end;
 end;
 
-procedure TRtFont.ReadGlyph(AGlyph, ADepth: Integer; var AOut: TRtGlyphOutline; const AM: array of Double);
+procedure TRtFont.ReadGlyph(AGlyph, ADepth: Integer; var AOut: TRtGlyphOutline; const AM: array of Double;
+  var ABudget: Integer);
 const
   ON_CURVE = 1;
   X_SHORT = 2;
@@ -330,8 +371,12 @@ const
   XY_SCALE = 64;
   TWO_BY_TWO = 128;
   HAVE_INSTR = 256;
+  SCALED_OFFSET = $0800;
+  UNSCALED_OFFSET = $1000;
 var
-  ofs, len, contours, p, i, n, base, flags, rep, x, y, d, comp, cf, gi: Integer;
+  ofs, len, contours, p, i, n, base, flags, rep, x, y, d, comp, cf, gi, glyphStart, compStart, pa, pc: Integer;
+  matched: Boolean;
+  ex, ey: Double;
   endPts: array of Integer;
   fl: array of Byte;
   xs, ys: array of Integer;
@@ -339,6 +384,9 @@ var
   m: array[0..5] of Double;
 begin
   if ADepth > 8 then raise ERtFont.Create('font: composite glyphs too deep');
+  // (Codex review 169) every glyph visited counted, empty ones too
+  Dec(ABudget);
+  if ABudget < 0 then raise ERtFont.Create('font: a glyph of too many components');
   if (AGlyph < 0) or (AGlyph >= FNumGlyphs) then Exit;
   if not GlyphRange(AGlyph, ofs, len) then Exit;   // no contours (a space)
   if len < 10 then Exit;
@@ -435,37 +483,45 @@ begin
   begin
     // composite: each component placed by its own matrix, then this one's
     comp := 0;
+    glyphStart := AOut.Count;
     repeat
       Inc(comp);
       if comp > 64 then raise ERtFont.Create('font: too many components');
       cf := U16(p);
       gi := U16(p + 2);
       Inc(p, 4);
+      matched := cf and ARGS_XY = 0;
+      pa := 0;
+      pc := 0;
       if cf and ARG_WORDS <> 0 then
       begin
-        if cf and ARGS_XY <> 0 then
+        if matched then
         begin
-          e := I16(p);
-          f := I16(p + 2);
+          pa := U16(p);                        // a point of this glyph so far, one of the component
+          pc := U16(p + 2);
+          e := 0;
+          f := 0;
         end
         else
         begin
-          e := 0;                               // matched points: not followed
-          f := 0;
+          e := I16(p);
+          f := I16(p + 2);
         end;
         Inc(p, 4);
       end
       else
       begin
-        if cf and ARGS_XY <> 0 then
+        if matched then
         begin
-          e := ShortInt(U8(p));
-          f := ShortInt(U8(p + 1));
+          pa := U8(p);
+          pc := U8(p + 1);
+          e := 0;
+          f := 0;
         end
         else
         begin
-          e := 0;
-          f := 0;
+          e := ShortInt(U8(p));
+          f := ShortInt(U8(p + 1));
         end;
         Inc(p, 2);
       end;
@@ -493,6 +549,15 @@ begin
         dd := I16(p + 6) / 16384;
         Inc(p, 8);
       end;
+      // (Codex review 169) an offset scaled by the component's matrix when
+      // the font says so (else, as Microsoft's default, not)
+      if (cf and SCALED_OFFSET <> 0) and (cf and UNSCALED_OFFSET = 0) then
+      begin
+        ex := a * e + c * f;
+        ey := b * e + dd * f;
+        e := ex;
+        f := ey;
+      end;
       // the component's matrix, then the parent's
       m[0] := AM[0] * a + AM[2] * b;
       m[1] := AM[1] * a + AM[3] * b;
@@ -500,7 +565,20 @@ begin
       m[3] := AM[1] * c + AM[3] * dd;
       m[4] := AM[0] * e + AM[2] * f + AM[4];
       m[5] := AM[1] * e + AM[3] * f + AM[5];
-      ReadGlyph(gi, ADepth + 1, AOut, m);
+      compStart := AOut.Count;
+      ReadGlyph(gi, ADepth + 1, AOut, m, ABudget);
+      // (Codex review 169) matched points: the component moved so that its
+      // point pc lies on the glyph's point pa
+      if matched and (glyphStart + pa < compStart) and (compStart + pc < AOut.Count) then
+      begin
+        ex := AOut.X[glyphStart + pa] - AOut.X[compStart + pc];
+        ey := AOut.Y[glyphStart + pa] - AOut.Y[compStart + pc];
+        for i := compStart to AOut.Count - 1 do
+        begin
+          AOut.X[i] := AOut.X[i] + ex;
+          AOut.Y[i] := AOut.Y[i] + ey;
+        end;
+      end;
       if p > ofs + len then raise ERtFont.Create('font: a glyph beyond its length');
     until cf and MORE = 0;
   end;
@@ -509,13 +587,15 @@ end;
 function TRtFont.Outline(AGlyph: Integer): TRtGlyphOutline;
 var
   o: TRtGlyphOutline;
+  budget: Integer;
 begin
   if (AGlyph < 0) or (AGlyph >= FNumGlyphs) then AGlyph := 0;
   if not FLoaded[AGlyph] then
   begin
     o := Default(TRtGlyphOutline);
+    budget := 4096;
     try
-      ReadGlyph(AGlyph, 0, o, [1, 0, 0, 1, 0, 0]);
+      ReadGlyph(AGlyph, 0, o, [1, 0, 0, 1, 0, 0], budget);
     except
       // a damaged glyph is drawn as nothing, never as an error at each frame
       o := Default(TRtGlyphOutline);

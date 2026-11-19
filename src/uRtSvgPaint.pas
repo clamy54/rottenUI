@@ -13,13 +13,24 @@ unit uRtSvgPaint;
 interface
 
 uses
-  Classes, SysUtils, Math, Graphics, uRtSvg;
+  Classes, SysUtils, Math, Graphics, uRtSvg, uRtRaster;
 
 { Paints AImage onto ABitmap, sized AWidth x AHeight: AM maps the image's
   pixels onto the bitmap's. Rendered by bands, so that a large bitmap
   never needs the rasterizer's buffers for all its pixels at once. }
 procedure RtSvgPaint(AImage: TRtSvgImage; ABitmap: TBitmap; AWidth, AHeight: Integer;
   const AM: TRtSvgMatrix; AInk, APaper, AVoid: TColor; const AFontName: string);
+
+{ AImage painted into ARaster (its whole size), the same to the byte on
+  every system: its shapes by uRtSvg's rasterizer, its texts written by
+  uRtRaster in the embedded font AFontName (uFontEmbed), measured by the
+  font itself; the colours as RtSvgPaint takes them (straight $AARRGGBB). }
+procedure RtSvgPaintRaster(AImage: TRtSvgImage; ARaster: TRtRaster; const AM: TRtSvgMatrix;
+  AInk, APaper, AVoid: TRtColor; const AFontName: string);
+{ A text of the image as RtSvgPaintRaster writes it: its em in pixels, its
+  stretch along its line and its width at that size (False: not drawn). }
+function RtSvgRasterTextSize(AImage: TRtSvgImage; AIndex: Integer; const AM: TRtSvgMatrix;
+  const AFontName: string; out ASize, AStretch, AWidth: Double): Boolean;
 
 { The texts only, onto any canvas (AM: the image's pixels to the canvas's). }
 procedure RtSvgPaintTexts(AImage: TRtSvgImage; ACanvas: TCanvas; const AM: TRtSvgMatrix;
@@ -35,7 +46,7 @@ var
 implementation
 
 uses
-  IntfGraphics, GraphType, FPImage, LCLType, LCLIntf;
+  IntfGraphics, GraphType, FPImage, LCLType, LCLIntf, uRtFont, uFontEmbed;
 
 const
   BAND_PIXELS = 2 * 1024 * 1024;
@@ -487,6 +498,202 @@ begin
     if layer = 0 then j := Low(Integer) else j := lo + 1;
     if layer = High(breaks) then n := High(Integer) else n := hi;
     PaintTextRange(AImage, ABitmap.Canvas, AM, AInk, APaper, AFontName, j, n);
+    lo := hi;
+  end;
+  r.Lum := nil;
+  r.Alpha := nil;
+end;
+
+{ ------------------------------------------------------------------------
+  Painted into a raster of rottenUI's own (the same on every system) }
+
+function RtSvgRasterTextSize(AImage: TRtSvgImage; AIndex: Integer; const AM: TRtSvgMatrix;
+  const AFontName: string; out ASize, AStretch, AWidth: Double): Boolean;
+var
+  t: TRtSvgText;
+  m: TRtSvgMatrix;
+  k, along, across, target: Double;
+  font: TRtFont;
+begin
+  Result := False;
+  ASize := 0;
+  AStretch := 1;
+  AWidth := 0;
+  t := AImage.Texts[AIndex];
+  if (t.Text = '') or (t.Alpha <= 0.02) then Exit;
+  font := EmbeddedRtFont(AFontName, t.Bold, t.Italic);
+  if font = nil then Exit;
+  m := RtSvgMul(AM, t.M);
+  k := Sqrt(Abs(m.A * m.D - m.B * m.C));
+  ASize := t.Size * k;
+  along := Sqrt(m.A * m.A + m.B * m.B);
+  if RtSvgStretchTexts and (along > 1e-12) then
+  begin
+    across := Abs(m.A * m.D - m.B * m.C) / along;
+    if (across > 1e-12) and (Abs(along / across - 1) > STRETCH_MIN) then
+    begin
+      AStretch := along / across;
+      ASize := t.Size * across;
+    end;
+  end;
+  if IsNan(ASize) or (ASize < 3) or (ASize > 4000) then Exit;
+  AWidth := RtTextWidth(font, t.Text, ASize);
+  // narrowed when the SVG asked for a proportional font
+  if not t.Mono then
+  begin
+    target := PROPORTIONAL_EM * ASize * Utf8Chars(t.Text);
+    if (AWidth > target) and (target > 0) then
+    begin
+      ASize := ASize * target / AWidth;
+      if ASize < 3 then Exit;
+      AWidth := RtTextWidth(font, t.Text, ASize);
+    end;
+  end;
+  Result := True;
+end;
+
+procedure PaintTextRangeRaster(AImage: TRtSvgImage; ARaster: TRtRaster; const AM: TRtSvgMatrix;
+  AInk, APaper: TRtColor; const AFontName: string; AOrderLo, AOrderHi: Integer);
+var
+  i: Integer;
+  t: TRtSvgText;
+  m: TRtSvgMatrix;
+  px, py, size, stretch, tw, ang, du, dv, asc, desc, ux, uy, vx, vy, lum: Double;
+  font: TRtFont;
+  col: TRtColor;
+
+  function Mix(AShift: Integer): LongWord;
+  var
+    a, b: Integer;
+  begin
+    a := (AInk shr AShift) and $FF;
+    b := (APaper shr AShift) and $FF;
+    Result := EnsureRange(Round(a + (b - a) * lum), 0, 255);
+  end;
+
+begin
+  for i := 0 to AImage.TextCount - 1 do
+  begin
+    t := AImage.Texts[i];
+    if (t.Order < AOrderLo) or (t.Order > AOrderHi) then Continue;
+    if AImage.TextHidden[i] then Continue;
+    if not RtSvgRasterTextSize(AImage, i, AM, AFontName, size, stretch, tw) then Continue;
+    font := EmbeddedRtFont(AFontName, t.Bold, t.Italic);
+    m := RtSvgMul(AM, t.M);
+    RtSvgApply(m, t.X, t.Y, px, py);
+    if IsNan(px) or IsNan(py) or (px < -size * 200 * Max(1, stretch)) or (py < -size * 200 * Max(1, stretch)) or
+      (px > ARaster.Width + size * 200 * Max(1, stretch)) or (py > ARaster.Height + size * 200 * Max(1, stretch)) then
+      Continue;
+    // the line's direction straight from the matrix: no angle, no
+    // platform trigonometry (the same pixels everywhere)
+    ang := Sqrt(m.A * m.A + m.B * m.B);
+    if IsNan(ang) or (ang < 1e-12) then Continue;
+    asc := font.Ascent * size / font.UnitsPerEm;
+    desc := -font.Descent * size / font.UnitsPerEm;
+    case t.Anchor of
+      1: du := tw * stretch / 2;
+      2: du := tw * stretch;
+    else
+      du := 0;
+    end;
+    // from the anchor to the baseline: what the canvas measured from the top
+    case t.Baseline of
+      1: dv := (asc + desc) / 2 - asc;
+      2: dv := -asc;
+    else
+      dv := 0;
+    end;
+    ux := m.A / ang; uy := m.B / ang;
+    vx := -uy; vy := ux;
+    lum := t.Lum * t.Alpha + (1 - t.Alpha);
+    col := $FF000000 or Mix(16) shl 16 or Mix(8) shl 8 or Mix(0);
+    ARaster.DrawTextDir(font, t.Text, px - ux * du - vx * dv, py - uy * du - vy * dv, size, ux, uy, col, stretch);
+  end;
+end;
+
+procedure RtSvgPaintRaster(AImage: TRtSvgImage; ARaster: TRtRaster; const AM: TRtSvgMatrix;
+  AInk, APaper, AVoid: TRtColor; const AFontName: string);
+var
+  r: TRtSvgRaster;
+  w, h, y0, bh, x, y, i, j, k, n, layer, lo, hi: Integer;
+  a, l: Single;
+  breaks: array of Integer;
+  ink, paper, void: array[0..2] of Single;
+  d: LongWord;
+  ch: array[0..2] of Integer;
+  c: Integer;
+begin
+  w := ARaster.Width;
+  h := ARaster.Height;
+  if (w <= 0) or (h <= 0) then Exit;
+  for c := 0 to 2 do
+  begin
+    ink[c] := (AInk shr (16 - 8 * c)) and $FF;
+    paper[c] := (APaper shr (16 - 8 * c)) and $FF;
+    void[c] := (AVoid shr (16 - 8 * c)) and $FF;
+  end;
+  bh := Max(1, BAND_PIXELS div w);
+  breaks := nil;
+  for i := 0 to AImage.TextCount - 1 do
+  begin
+    n := EnsureRange(AImage.Texts[i].Order, 0, AImage.ShapeCount);
+    j := 0;
+    while (j < Length(breaks)) and (breaks[j] < n) do Inc(j);
+    if (j < Length(breaks)) and (breaks[j] = n) then Continue;
+    SetLength(breaks, Length(breaks) + 1);
+    for k := High(breaks) downto j + 1 do breaks[k] := breaks[k - 1];
+    breaks[j] := n;
+    if Length(breaks) > MAX_LAYERS then Break;
+  end;
+  if Length(breaks) > MAX_LAYERS then breaks := nil;
+  if (Length(breaks) = 0) or (breaks[High(breaks)] < AImage.ShapeCount) then
+  begin
+    SetLength(breaks, Length(breaks) + 1);
+    breaks[High(breaks)] := AImage.ShapeCount;
+  end;
+  lo := 0;
+  for layer := 0 to High(breaks) do
+  begin
+    hi := breaks[layer];
+    if (layer = 0) or (hi > lo) then
+    begin
+      y0 := 0;
+      while y0 < h do
+      begin
+        r := Default(TRtSvgRaster);
+        r.Width := w;
+        r.Height := Min(bh, h - y0);
+        AImage.Render(RtSvgMul(RtSvgTranslate(0, -y0), AM), r, lo, hi);
+        for y := 0 to r.Height - 1 do
+          for x := 0 to w - 1 do
+          begin
+            i := y * w + x;
+            a := r.Alpha[i];
+            if layer = 0 then
+            begin
+              // the first layer over the void
+              if a > 0.0001 then l := EnsureRange(r.Lum[i] / a, 0, 1) else l := 1;
+              for c := 0 to 2 do
+                ch[c] := Round(EnsureRange((ink[c] + (paper[c] - ink[c]) * l) * a + void[c] * (1 - a), 0, 255));
+            end
+            else
+            begin
+              if a <= 0.002 then Continue;
+              l := EnsureRange(r.Lum[i] / a, 0, 1);
+              d := ARaster.Pixels[(y0 + y) * w + x];
+              for c := 0 to 2 do
+                ch[c] := Round(EnsureRange((ink[c] + (paper[c] - ink[c]) * l) * a +
+                  ((d shr (16 - 8 * c)) and $FF) * (1 - a), 0, 255));
+            end;
+            ARaster.Pixels[(y0 + y) * w + x] := $FF000000 or LongWord(ch[0]) shl 16 or LongWord(ch[1]) shl 8 or
+              LongWord(ch[2]);
+          end;
+        Inc(y0, r.Height);
+      end;
+    end;
+    if layer = 0 then j := Low(Integer) else j := lo + 1;
+    if layer = High(breaks) then n := High(Integer) else n := hi;
+    PaintTextRangeRaster(AImage, ARaster, AM, AInk, APaper, AFontName, j, n);
     lo := hi;
   end;
   r.Lum := nil;
