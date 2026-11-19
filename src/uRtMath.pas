@@ -16,6 +16,9 @@ function RtSin(X: Double): Double;
 function RtCos(X: Double): Double;
 function RtTan(X: Double): Double;
 function RtArcTan2(Y, X: Double): Double;
+{ The largest whole number not above X, as a double (any finite X: Floor
+  is 32 bits). }
+function RtFloor(X: Double): Double;
 
 implementation
 
@@ -54,20 +57,32 @@ const
   TWOPI_1 = 6.28318530717958623;
   TWOPI_2 = 2.44929359829470636e-16;
 
+function RtFloor(X: Double): Double;
+begin
+  Result := Int(X);
+  if (X < 0) and (Result <> X) then Result := Result - 1;
+end;
+
 procedure Reduce(X: Double; out R: Double; out Q: Integer);
 var
   k: Double;
 begin
   // (Codex review 170) a large angle first brought within a turn
-  // (deterministic, as exact as two parts of 2 pi allow)
+  // (deterministic, as exact as two parts of 2 pi allow; Codex review 171:
+  // a floor of any size, and beyond what a double holds of a turn, none)
   if Abs(X) > 1e5 then
   begin
-    k := Floor(X / TWOPI_1);
-    X := (X - k * TWOPI_1) - k * TWOPI_2;
+    if Abs(X) > 1e15 then X := 0
+    else
+    begin
+      k := RtFloor(X / TWOPI_1);
+      X := (X - k * TWOPI_1) - k * TWOPI_2;
+      if (X < -1) or (X > TWOPI_1 + 1) then X := 0;
+    end;
   end;
-  k := Floor(X * TWO_O_PI + 0.5);
+  k := RtFloor(X * TWO_O_PI + 0.5);
   R := (X - k * PIO2_HI) - k * PIO2_LO;
-  Q := Integer(Trunc(k - 4 * Floor(k / 4)));   // 0..3
+  Q := Integer(Trunc(k - 4 * RtFloor(k / 4)));   // 0..3
 end;
 
 function RtSin(X: Double): Double;

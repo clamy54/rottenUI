@@ -159,7 +159,9 @@ uses
 function NormDeg(ADeg: Double): Double;
 begin
   if IsNan(ADeg) or IsInfinite(ADeg) then Exit(0);
-  Result := ADeg - 360 * Floor(ADeg / 360);
+  // (Codex review 171) a floor of any size, in doubles
+  Result := ADeg - 360.0 * RtFloor(ADeg / 360.0);
+  if (Result < 0) or (Result >= 360) then Result := 0;
 end;
 
 const
