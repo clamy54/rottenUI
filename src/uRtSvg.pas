@@ -154,6 +154,14 @@ implementation
 uses
   StrUtils, uRtMath;
 
+{ (Codex review 170) degrees within one turn first: a huge rotate() keeps
+  its fraction of a turn (deterministic). }
+function NormDeg(ADeg: Double): Double;
+begin
+  if IsNan(ADeg) or IsInfinite(ADeg) then Exit(0);
+  Result := ADeg - 360 * Floor(ADeg / 360);
+end;
+
 const
   CMD_MOVE = 0;
   CMD_LINE = 1;
@@ -821,7 +829,7 @@ begin
     end
     else if (name = 'rotate') and (k in [1, 3]) then
     begin
-      ang := DegToRad(a[0]);
+      ang := DegToRad(NormDeg(a[0]));
       c := RtCos(ang);
       sn := RtSin(ang);
       t := RtSvgMatrix(c, sn, -sn, c, 0, 0);
@@ -829,9 +837,9 @@ begin
         t := RtSvgMul(RtSvgTranslate(a[1], a[2]), RtSvgMul(t, RtSvgTranslate(-a[1], -a[2])));
     end
     else if (name = 'skewx') and (k = 1) then
-      t := RtSvgMatrix(1, 0, RtTan(DegToRad(a[0])), 1, 0, 0)
+      t := RtSvgMatrix(1, 0, RtTan(DegToRad(NormDeg(a[0]))), 1, 0, 0)
     else if (name = 'skewy') and (k = 1) then
-      t := RtSvgMatrix(1, RtTan(DegToRad(a[0])), 0, 1, 0, 0)
+      t := RtSvgMatrix(1, RtTan(DegToRad(NormDeg(a[0]))), 0, 1, 0, 0)
     else
       Exit(False);
     AM := RtSvgMul(AM, t);
@@ -1352,8 +1360,8 @@ begin
     AddCmd(CMD_LINE, [X, Y]);
     Exit;
   end;
-  cp := RtCos(DegToRad(APhi));
-  sp := RtSin(DegToRad(APhi));
+  cp := RtCos(DegToRad(NormDeg(APhi)));
+  sp := RtSin(DegToRad(NormDeg(APhi)));
   x1 := cp * (X0 - X) / 2 + sp * (Y0 - Y) / 2;
   y1 := -sp * (X0 - X) / 2 + cp * (Y0 - Y) / 2;
   lam := Sqr(x1) / Sqr(RX) + Sqr(y1) / Sqr(RY);

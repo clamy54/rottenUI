@@ -30,7 +30,7 @@ procedure RtSvgPaintRaster(AImage: TRtSvgImage; ARaster: TRtRaster; const AM: TR
 { A text of the image as RtSvgPaintRaster writes it: its em in pixels, its
   stretch along its line and its width at that size (False: not drawn). }
 function RtSvgRasterTextSize(AImage: TRtSvgImage; AIndex: Integer; const AM: TRtSvgMatrix;
-  const AFontName: string; out ASize, AStretch, AWidth: Double): Boolean;
+  const AFontName: string; out ASize, AStretch, AWidth: Double; AMinSize: Double = 3): Boolean;
 
 { The texts only, onto any canvas (AM: the image's pixels to the canvas's). }
 procedure RtSvgPaintTexts(AImage: TRtSvgImage; ACanvas: TCanvas; const AM: TRtSvgMatrix;
@@ -508,7 +508,7 @@ end;
   Painted into a raster of rottenUI's own (the same on every system) }
 
 function RtSvgRasterTextSize(AImage: TRtSvgImage; AIndex: Integer; const AM: TRtSvgMatrix;
-  const AFontName: string; out ASize, AStretch, AWidth: Double): Boolean;
+  const AFontName: string; out ASize, AStretch, AWidth: Double; AMinSize: Double): Boolean;
 var
   t: TRtSvgText;
   m: TRtSvgMatrix;
@@ -532,11 +532,12 @@ begin
     across := Abs(m.A * m.D - m.B * m.C) / along;
     if (across > 1e-12) and (Abs(along / across - 1) > STRETCH_MIN) then
     begin
-      AStretch := along / across;
+      AStretch := RtTextStretch(along / across);
       ASize := t.Size * across;
     end;
   end;
-  if IsNan(ASize) or (ASize < 3) or (ASize > 4000) then Exit;
+  // (Codex review 170) too small to draw is a painter's matter (AMinSize)
+  if IsNan(ASize) or (ASize < AMinSize) or (ASize > 4000) then Exit;
   AWidth := RtTextWidth(font, t.Text, ASize);
   // narrowed when the SVG asked for a proportional font
   if not t.Mono then
@@ -545,7 +546,7 @@ begin
     if (AWidth > target) and (target > 0) then
     begin
       ASize := ASize * target / AWidth;
-      if ASize < 3 then Exit;
+      if ASize < AMinSize then Exit;
       AWidth := RtTextWidth(font, t.Text, ASize);
     end;
   end;

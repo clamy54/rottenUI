@@ -49,10 +49,22 @@ begin
     r2 * (1 / 479001600 + r2 * (-1 / 87178291200 + r2 * (1 / 20922789888000))))))));
 end;
 
+const
+  // 2 pi in three parts, for angles beyond the fast reduction's reach
+  TWOPI_1 = 6.28318530717958623;
+  TWOPI_2 = 2.44929359829470636e-16;
+
 procedure Reduce(X: Double; out R: Double; out Q: Integer);
 var
   k: Double;
 begin
+  // (Codex review 170) a large angle first brought within a turn
+  // (deterministic, as exact as two parts of 2 pi allow)
+  if Abs(X) > 1e5 then
+  begin
+    k := Floor(X / TWOPI_1);
+    X := (X - k * TWOPI_1) - k * TWOPI_2;
+  end;
   k := Floor(X * TWO_O_PI + 0.5);
   R := (X - k * PIO2_HI) - k * PIO2_LO;
   Q := Integer(Trunc(k - 4 * Floor(k / 4)));   // 0..3
@@ -64,7 +76,6 @@ var
   q: Integer;
 begin
   if IsNan(X) or IsInfinite(X) then Exit(NaN);
-  if Abs(X) > 1e9 then Exit(0);
   Reduce(X, r, q);
   case q of
     0: Result := SinPoly(r);
@@ -81,7 +92,6 @@ var
   q: Integer;
 begin
   if IsNan(X) or IsInfinite(X) then Exit(NaN);
-  if Abs(X) > 1e9 then Exit(1);
   Reduce(X, r, q);
   case q of
     0: Result := CosPoly(r);
@@ -131,6 +141,11 @@ begin
   Result := base + sum;
 end;
 
+function SignBit(AValue: Double): Boolean; inline;
+begin
+  Result := (PQWord(@AValue)^ shr 63) = 1;
+end;
+
 function RtArcTan2(Y, X: Double): Double;
 var
   ax, ay, a: Double;
@@ -138,11 +153,15 @@ begin
   if IsNan(X) or IsNan(Y) then Exit(NaN);
   ax := Abs(X);
   ay := Abs(Y);
-  if (ax = 0) and (ay = 0) then Exit(0);
-  if ay <= ax then a := ArcTan01(ay / ax)
+  // (Codex review 170) infinities and signed zeros as IEEE says
+  if IsInfinite(ay) and IsInfinite(ax) then a := PIO4_D
+  else if IsInfinite(ay) then a := PI_D / 2
+  else if IsInfinite(ax) or (ay = 0) then a := 0
+  else if ax = 0 then a := PI_D / 2
+  else if ay <= ax then a := ArcTan01(ay / ax)
   else a := PI_D / 2 - ArcTan01(ax / ay);
-  if X < 0 then a := PI_D - a;
-  if Y < 0 then a := -a;
+  if SignBit(X) then a := PI_D - a;
+  if SignBit(Y) then a := -a;
   Result := a;
 end;
 

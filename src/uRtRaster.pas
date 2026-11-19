@@ -96,6 +96,8 @@ procedure RtPathRoundRect(var APath: TRtPath; AX0, AY0, AX1, AY1, ARadius: Doubl
 procedure RtPathRect(var APath: TRtPath; AX0, AY0, AX1, AY1: Double);
 
 function RtRgb(AR, AG, AB: Byte; AA: Byte = 255): TRtColor;
+{ A text's stretch as DrawText applies it (bounded): measure with it too. }
+function RtTextStretch(AStretch: Double): Double;
 
 implementation
 
@@ -110,6 +112,12 @@ const
 
 var
   CosTab, SinTab: array[0..CIRCLE_STEPS] of Double;
+
+function RtTextStretch(AStretch: Double): Double;
+begin
+  if IsNan(AStretch) or not (AStretch > 0) then Exit(1);
+  Result := EnsureRange(AStretch, 1e-3, 1e4);
+end;
 
 function RtRgb(AR, AG, AB: Byte; AA: Byte): TRtColor;
 begin
@@ -998,7 +1006,8 @@ begin
   if IsNan(co) or IsNan(si) then Exit;
   if Abs(co) < 1e-15 then co := 0;
   if Abs(si) < 1e-15 then si := 0;
-  if not (AStretch > 0.01) or (AStretch > 100) then AStretch := 1;
+  // (Codex review 170) the same bound as the measure (RtTextStretch)
+  AStretch := RtTextStretch(AStretch);
   flat := Default(TRtFlatGlyph);
   pen := 0;
   for i := 0 to High(cps) do
