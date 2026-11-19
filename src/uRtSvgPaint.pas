@@ -25,6 +25,13 @@ procedure RtSvgPaint(AImage: TRtSvgImage; ABitmap: TBitmap; AWidth, AHeight: Int
 procedure RtSvgPaintTexts(AImage: TRtSvgImage; ACanvas: TCanvas; const AM: TRtSvgMatrix;
   AInk, APaper: TColor; const AFontName: string);
 
+var
+  { A text its transform stretches (wider or narrower than high) is drawn
+    stretched; False: drawn as before this setting existed, at the
+    transform's mean scale. Texts that are not stretched are drawn the same
+    either way. }
+  RtSvgStretchTexts: Boolean = True;
+
 implementation
 
 uses
@@ -36,6 +43,10 @@ const
   // The width of an average character of a proportional font, in em (a
   // monospace one takes 0.6).
   PROPORTIONAL_EM = 0.52;
+  // Beyond this difference between its width and its height scales, a text
+  // is drawn stretched.
+  STRETCH_MIN = 0.03;
+  MAX_STRETCH_PIXELS = 4 * 1000 * 1000;   // a stretched text's box on the canvas
 
 type
   TRgbF = record
@@ -61,6 +72,163 @@ begin
     if (Ord(S[i]) and $C0) <> $80 then Inc(Result);
 end;
 
+{ ACanvas's pixels under ARect (clipped to it), as an image to change. }
+function GrabArea(ACanvas: TCanvas; var ARect: TRect): TBitmap;
+var
+  clip: TRect;
+begin
+  Result := nil;
+  clip := ACanvas.ClipRect;
+  if not IntersectRect(ARect, ARect, clip) then Exit;
+  if (ARect.Right - ARect.Left <= 0) or (ARect.Bottom - ARect.Top <= 0) or
+    (Int64(ARect.Right - ARect.Left) * (ARect.Bottom - ARect.Top) > MAX_STRETCH_PIXELS) then Exit;
+  Result := TBitmap.Create;
+  Result.PixelFormat := pf24bit;
+  Result.SetSize(ARect.Right - ARect.Left, ARect.Bottom - ARect.Top);
+  Result.Canvas.CopyRect(Rect(0, 0, Result.Width, Result.Height), ACanvas, ARect);
+end;
+
+{ A text stretched: written level at its letters' height (AHeight) into a
+  mask, then laid stretched by ARatio along its line, turned by AAngle
+  (radians, clockwise on the canvas), its anchor at (APX, APY) (ADu, ADv:
+  the anchor's place in the level text), blended in AColor. }
+procedure PaintStretched(ACanvas: TCanvas; const AText, AFontName: string; AStyle: TFontStyles;
+  AHeight, ARatio, AAngle, APX, APY: Double; AAnchor, ABaseline: Integer; AColor: TColor);
+const
+  PAD = 2;
+var
+  mask: TBitmap;
+  mi, di: TLazIntfImage;
+  area: TBitmap;
+  tw, th, mw, mh, x, y, ix, iy: Integer;
+  du, dv, ux, uy, vx, vy, dx, dy, a, b, fx, fy, c00, c10, c01, c11, cov: Double;
+  tm: TTextMetric;
+  corners: array[0..3] of TPoint;
+  r: TRect;
+  ink: TRgbF;
+  fp: TFPColor;
+  cover: array of Single;
+
+  function Mx(AX, AY: Double): TPoint;
+  begin
+    // the level text's point (from its anchor) on the canvas
+    Result := Point(Round(APX + ux * AX * ARatio + vx * AY), Round(APY + uy * AX * ARatio + vy * AY));
+  end;
+
+begin
+  mask := TBitmap.Create;
+  try
+    mask.PixelFormat := pf24bit;
+    mask.Canvas.Font.Name := AFontName;
+    mask.Canvas.Font.Style := AStyle;
+    mask.Canvas.Font.Orientation := 0;
+    mask.Canvas.Font.Height := -Max(1, Round(AHeight));
+    mask.Canvas.Font.Quality := fqAntialiased;
+    tw := mask.Canvas.TextWidth(AText);
+    th := mask.Canvas.TextHeight(AText);
+    tm := Default(TTextMetric);
+    if not GetTextMetrics(mask.Canvas.Handle, tm) then
+    begin
+      tm.tmAscent := Round(AHeight * 0.8);
+      tm.tmDescent := Round(AHeight * 0.2);
+    end;
+    mw := tw + 2 * PAD;
+    mh := th + 2 * PAD;
+    if (tw <= 0) or (th <= 0) or (Int64(mw) * mh > MAX_STRETCH_PIXELS) then Exit;
+    mask.SetSize(mw, mh);
+    mask.Canvas.Brush.Style := bsSolid;
+    mask.Canvas.Brush.Color := clWhite;
+    mask.Canvas.FillRect(Rect(0, 0, mw, mh));
+    mask.Canvas.Font.Color := clBlack;
+    mask.Canvas.Brush.Style := bsClear;
+    mask.Canvas.TextOut(PAD, PAD, AText);
+    // its coverage, read once
+    mi := mask.CreateIntfImage;
+    try
+      SetLength(cover, mw * mh);
+      for y := 0 to mh - 1 do
+        for x := 0 to mw - 1 do
+        begin
+          fp := mi.Colors[x, y];
+          cover[y * mw + x] := 1 - ((fp.Red shr 8) * 0.299 + (fp.Green shr 8) * 0.587 + (fp.Blue shr 8) * 0.114) / 255;
+        end;
+    finally
+      mi.Free;
+    end;
+  finally
+    mask.Free;
+  end;
+  case AAnchor of
+    1: du := tw / 2;
+    2: du := tw;
+  else
+    du := 0;
+  end;
+  case ABaseline of
+    1: dv := (tm.tmAscent + tm.tmDescent) / 2;
+    2: dv := 0;
+  else
+    dv := tm.tmAscent;
+  end;
+  ux := Cos(AAngle); uy := Sin(AAngle);
+  vx := -Sin(AAngle); vy := Cos(AAngle);
+  // its box on the canvas
+  corners[0] := Mx(-du - PAD, -dv - PAD);
+  corners[1] := Mx(mw - PAD - du, -dv - PAD);
+  corners[2] := Mx(-du - PAD, mh - PAD - dv);
+  corners[3] := Mx(mw - PAD - du, mh - PAD - dv);
+  r := Rect(MaxInt, MaxInt, -MaxInt, -MaxInt);
+  for x := 0 to 3 do
+  begin
+    r.Left := Min(r.Left, corners[x].X - 1);
+    r.Top := Min(r.Top, corners[x].Y - 1);
+    r.Right := Max(r.Right, corners[x].X + 2);
+    r.Bottom := Max(r.Bottom, corners[x].Y + 2);
+  end;
+  area := GrabArea(ACanvas, r);
+  if area = nil then Exit;
+  ink := Rgb3(AColor);
+  try
+    di := area.CreateIntfImage;
+    try
+      for y := 0 to area.Height - 1 do
+        for x := 0 to area.Width - 1 do
+        begin
+          // the canvas's pixel back in the mask (its centre), sampled
+          dx := r.Left + x + 0.5 - APX;
+          dy := r.Top + y + 0.5 - APY;
+          a := (dx * ux + dy * uy) / ARatio + du + PAD - 0.5;
+          b := dx * vx + dy * vy + dv + PAD - 0.5;
+          if (a < -1) or (b < -1) or (a > mw) or (b > mh) then Continue;
+          ix := Floor(a);
+          iy := Floor(b);
+          fx := a - ix;
+          fy := b - iy;
+          if (ix >= 0) and (iy >= 0) and (ix < mw) and (iy < mh) then c00 := cover[iy * mw + ix] else c00 := 0;
+          if (ix + 1 >= 0) and (iy >= 0) and (ix + 1 < mw) and (iy < mh) then c10 := cover[iy * mw + ix + 1] else c10 := 0;
+          if (ix >= 0) and (iy + 1 >= 0) and (ix < mw) and (iy + 1 < mh) then c01 := cover[(iy + 1) * mw + ix] else c01 := 0;
+          if (ix + 1 >= 0) and (iy + 1 >= 0) and (ix + 1 < mw) and (iy + 1 < mh) then c11 := cover[(iy + 1) * mw + ix + 1]
+          else c11 := 0;
+          cov := (c00 * (1 - fx) + c10 * fx) * (1 - fy) + (c01 * (1 - fx) + c11 * fx) * fy;
+          if cov <= 0.004 then Continue;
+          cov := Min(1, cov);
+          fp := di.Colors[x, y];
+          fp.Red := Round(EnsureRange(ink.R * cov + (fp.Red shr 8) * (1 - cov), 0, 255)) * 257;
+          fp.Green := Round(EnsureRange(ink.G * cov + (fp.Green shr 8) * (1 - cov), 0, 255)) * 257;
+          fp.Blue := Round(EnsureRange(ink.B * cov + (fp.Blue shr 8) * (1 - cov), 0, 255)) * 257;
+          fp.Alpha := $FFFF;
+          di.Colors[x, y] := fp;
+        end;
+      area.LoadFromIntfImage(di);
+    finally
+      di.Free;
+    end;
+    ACanvas.Draw(r.Left, r.Top, area);
+  finally
+    area.Free;
+  end;
+end;
+
 { The texts whose Order lies in AOrderLo..AOrderHi. }
 procedure PaintTextRange(AImage: TRtSvgImage; ACanvas: TCanvas; const AM: TRtSvgMatrix;
   AInk, APaper: TColor; const AFontName: string; AOrderLo, AOrderHi: Integer);
@@ -68,7 +236,7 @@ var
   i, tw: Integer;
   t: TRtSvgText;
   m: TRtSvgMatrix;
-  px, py, k, size, target, ang, du, dv, ux, uy, vx, vy, lum: Double;
+  px, py, k, size, target, ang, du, dv, ux, uy, vx, vy, lum, along, across, stretch: Double;
   tm: TTextMetric;
   ink, paper: TRgbF;
   style: TFontStyles;
@@ -84,6 +252,19 @@ begin
     m := RtSvgMul(AM, t.M);
     k := Sqrt(Abs(m.A * m.D - m.B * m.C));
     size := t.Size * k;
+    // Its scales along its line and across it: a stretched text, unless
+    // the application keeps the former drawing (RtSvgStretchTexts).
+    along := Sqrt(m.A * m.A + m.B * m.B);
+    stretch := 1;
+    if RtSvgStretchTexts and (along > 1e-12) then
+    begin
+      across := Abs(m.A * m.D - m.B * m.C) / along;
+      if (across > 1e-12) and (Abs(along / across - 1) > STRETCH_MIN) then
+      begin
+        stretch := along / across;
+        size := t.Size * across;
+      end;
+    end;
     if IsNan(size) or (size < 3) or (size > 4000) then Continue;
     RtSvgApply(m, t.X, t.Y, px, py);
     // Not a sane place, or far off the canvas (a text is never longer
@@ -135,6 +316,12 @@ begin
     lum := t.Lum * t.Alpha + (1 - t.Alpha);
     ACanvas.Font.Color := RGBToColor(Round(ink.R + (paper.R - ink.R) * lum),
       Round(ink.G + (paper.G - ink.G) * lum), Round(ink.B + (paper.B - ink.B) * lum));
+    if stretch <> 1 then
+    begin
+      PaintStretched(ACanvas, t.Text, AFontName, style, size, stretch, ang, px, py, t.Anchor, t.Baseline,
+        ACanvas.Font.Color);
+      Continue;
+    end;
     // The canvas turns counterclockwise, the matrix clockwise (y down).
     ACanvas.Font.Orientation := Round(-RadToDeg(ang) * 10);
     ACanvas.TextOut(Round(px - ux * du - vx * dv), Round(py - uy * du - vy * dv), t.Text);
