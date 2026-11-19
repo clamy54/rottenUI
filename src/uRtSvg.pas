@@ -3052,28 +3052,23 @@ var
     procedure Flush(var APath: string; AOffset: Double);
     begin
       if APath = '' then Exit;
-      Put('<path d="' + APath + '"' + stroke + ' stroke-dashoffset="' + N(sh.DashOffset * k + AOffset) + '"/>' +
-        LineEnding);
+      Put('<path d="' + APath + '"' + stroke + ' stroke-dashoffset="' +
+        N(FMod(FMod(sh.DashOffset * k, period) + FMod(AOffset, period), period)) + '"/>' + LineEnding);
       APath := '';
-    end;
-
-    { Segment AE of subpath s wholly inside the widened frame. }
-    function SegKept(AE: Integer): Boolean;
-    var
-      cx0, cy0, cx1, cy1: Double;
-    begin
-      cx0 := f.X[f.Starts[s] + AE];
-      cy0 := f.Y[f.Starts[s] + AE];
-      cx1 := f.X[f.Starts[s] + (AE + 1) mod cnt];
-      cy1 := f.Y[f.Starts[s] + (AE + 1) mod cnt];
-      Result := ClipSegment(cx0, cy0, cx1, cy1) and (cx0 = f.X[f.Starts[s] + AE]) and
-        (cy0 = f.Y[f.Starts[s] + AE]) and (cx1 = f.X[f.Starts[s] + (AE + 1) mod cnt]) and
-        (cy1 = f.Y[f.Starts[s] + (AE + 1) mod cnt]);
     end;
 
     function Outside(AX, AY: Double): Boolean;
     begin
       Result := not ((AX >= -pad) and (AX <= AW + pad) and (AY >= -pad) and (AY <= AH + pad));
+    end;
+
+    { Segment AE of subpath s wholly inside the widened frame: (Codex
+      review 158) both its ends inside, the frame being convex (never the
+      clipped ends compared, which rounding moves). }
+    function SegKept(AE: Integer): Boolean;
+    begin
+      Result := not Outside(f.X[f.Starts[s] + AE], f.Y[f.Starts[s] + AE]) and
+        not Outside(f.X[f.Starts[s] + (AE + 1) mod cnt], f.Y[f.Starts[s] + (AE + 1) mod cnt]);
     end;
 
     { The dash pattern at APos along the stroke (as the painter starts it). }
@@ -3195,7 +3190,8 @@ var
           if e > 0 then dash := dash + ' ';
           dash := dash + N(dashes[e]);
         end;
-        if not (period > 0) then dash := '';
+        // (Codex review 158) As the painter: finer than a pixel, a plain line.
+        if (period < 1) or IsNan(period) or (period > 1e15) then dash := '';
       end;
       // (Codex review 157) Translucent dashes drawn here as pieces of one
       // element: their overlaps composited once, as in the original.
@@ -3251,8 +3247,10 @@ var
             if not inRun then
             begin
               offStart := dist + Hypot(x0 - ax, y0 - ay);
+              // (Codex review 158) Each reduced by the period first: a huge
+              // offset must not swallow the distance walked.
               if bake then
-                PhaseAt(sh.DashOffset * k + offStart)
+                PhaseAt(FMod(sh.DashOffset * k, period) + FMod(offStart, period))
               else if dash <> '' then
               begin
                 Flush(d, dOffset);
@@ -3267,7 +3265,7 @@ var
             else if dash <> '' then d := d + 'L' + N(x1) + ' ' + N(y1)
             else all := all + 'L' + N(x1) + ' ' + N(y1);
             // it leaves the frame on this segment: the run ends
-            if (Abs(x1 - bx) > 1e-9) or (Abs(y1 - by) > 1e-9) then inRun := False;
+            if Outside(bx, by) then inRun := False;
           end
           else
             inRun := False;
