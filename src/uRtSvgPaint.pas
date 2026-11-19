@@ -94,25 +94,34 @@ end;
   the anchor's place in the level text), blended in AColor. }
 procedure PaintStretched(ACanvas: TCanvas; const AText, AFontName: string; AStyle: TFontStyles;
   AHeight, ARatio, AAngle, APX, APY: Double; AAnchor, ABaseline: Integer; AColor: TColor);
-const
-  PAD = 2;
 var
   mask: TBitmap;
   mi, di: TLazIntfImage;
   area: TBitmap;
-  tw, th, mw, mh, x, y, ix, iy: Integer;
-  du, dv, ux, uy, vx, vy, dx, dy, a, b, fx, fy, c00, c10, c01, c11, cov: Double;
+  tw, th, mw, mh, x, y, ix, iy, padX, padY: Integer;
+  du, dv, ux, uy, vx, vy, dx, dy, a, b, fx, fy, c00, c10, c01, c11, cov, cx, cy, minx, miny, maxx, maxy: Double;
   tm: TTextMetric;
-  corners: array[0..3] of TPoint;
-  r: TRect;
+  r, clip: TRect;
   ink: TRgbF;
   fp: TFPColor;
+  onWhite: array of Single;
   cover: array of Single;
+  q: Integer;
 
-  function Mx(AX, AY: Double): TPoint;
+  procedure Level(ABack, AInk: TColor);
   begin
-    // the level text's point (from its anchor) on the canvas
-    Result := Point(Round(APX + ux * AX * ARatio + vx * AY), Round(APY + uy * AX * ARatio + vy * AY));
+    mask.Canvas.Brush.Style := bsSolid;
+    mask.Canvas.Brush.Color := ABack;
+    mask.Canvas.FillRect(Rect(0, 0, mw, mh));
+    mask.Canvas.Font.Color := AInk;
+    mask.Canvas.Brush.Style := bsClear;
+    mask.Canvas.TextOut(padX, padY, AText);
+  end;
+
+  function Grey(AImage: TLazIntfImage; AX, AY: Integer): Single;
+  begin
+    fp := AImage.Colors[AX, AY];
+    Result := ((fp.Red shr 8) + (fp.Green shr 8) + (fp.Blue shr 8)) / (3 * 255);
   end;
 
 begin
@@ -132,25 +141,35 @@ begin
       tm.tmAscent := Round(AHeight * 0.8);
       tm.tmDescent := Round(AHeight * 0.2);
     end;
-    mw := tw + 2 * PAD;
-    mh := th + 2 * PAD;
+    // (Codex review 155) Room for what overhangs the advance (an italic f,
+    // a j), the advance kept for the anchor.
+    padX := 2 + Round(0.35 * AHeight);
+    padY := 2 + Round(0.1 * AHeight);
+    mw := tw + 2 * padX;
+    mh := th + 2 * padY;
     if (tw <= 0) or (th <= 0) or (Int64(mw) * mh > MAX_STRETCH_PIXELS) then Exit;
     mask.SetSize(mw, mh);
-    mask.Canvas.Brush.Style := bsSolid;
-    mask.Canvas.Brush.Color := clWhite;
-    mask.Canvas.FillRect(Rect(0, 0, mw, mh));
-    mask.Canvas.Font.Color := clBlack;
-    mask.Canvas.Brush.Style := bsClear;
-    mask.Canvas.TextOut(PAD, PAD, AText);
-    // its coverage, read once
+    SetLength(onWhite, mw * mh);
+    SetLength(cover, mw * mh);
+    // (Codex review 155) Its coverage from two drawings, on white then on
+    // black: what a glyph paints opaque counts whole, whatever its colour
+    // (a colour font, an emoji), its antialiased edges in proportion.
+    Level(clWhite, clBlack);
     mi := mask.CreateIntfImage;
     try
-      SetLength(cover, mw * mh);
+      for y := 0 to mh - 1 do
+        for x := 0 to mw - 1 do onWhite[y * mw + x] := Grey(mi, x, y);
+    finally
+      mi.Free;
+    end;
+    Level(clBlack, clBlack);
+    mi := mask.CreateIntfImage;
+    try
       for y := 0 to mh - 1 do
         for x := 0 to mw - 1 do
         begin
-          fp := mi.Colors[x, y];
-          cover[y * mw + x] := 1 - ((fp.Red shr 8) * 0.299 + (fp.Green shr 8) * 0.587 + (fp.Blue shr 8) * 0.114) / 255;
+          q := y * mw + x;
+          cover[q] := EnsureRange(1 - (onWhite[q] - Grey(mi, x, y)), 0, 1);
         end;
     finally
       mi.Free;
@@ -172,19 +191,25 @@ begin
   end;
   ux := Cos(AAngle); uy := Sin(AAngle);
   vx := -Sin(AAngle); vy := Cos(AAngle);
-  // its box on the canvas
-  corners[0] := Mx(-du - PAD, -dv - PAD);
-  corners[1] := Mx(mw - PAD - du, -dv - PAD);
-  corners[2] := Mx(-du - PAD, mh - PAD - dv);
-  corners[3] := Mx(mw - PAD - du, mh - PAD - dv);
-  r := Rect(MaxInt, MaxInt, -MaxInt, -MaxInt);
-  for x := 0 to 3 do
+  // (Codex review 155) Its box on the canvas in real numbers, within the
+  // canvas's clip before it becomes pixels (a huge stretch overflows them).
+  minx := MaxDouble; miny := MaxDouble; maxx := -MaxDouble; maxy := -MaxDouble;
+  for q := 0 to 3 do
   begin
-    r.Left := Min(r.Left, corners[x].X - 1);
-    r.Top := Min(r.Top, corners[x].Y - 1);
-    r.Right := Max(r.Right, corners[x].X + 2);
-    r.Bottom := Max(r.Bottom, corners[x].Y + 2);
+    if (q and 1) = 0 then a := -du - padX else a := mw - padX - du;
+    if (q and 2) = 0 then b := -dv - padY else b := mh - padY - dv;
+    cx := APX + ux * a * ARatio + vx * b;
+    cy := APY + uy * a * ARatio + vy * b;
+    minx := Min(minx, cx); maxx := Max(maxx, cx);
+    miny := Min(miny, cy); maxy := Max(maxy, cy);
   end;
+  clip := ACanvas.ClipRect;
+  minx := Max(minx - 1, clip.Left);
+  miny := Max(miny - 1, clip.Top);
+  maxx := Min(maxx + 2, clip.Right);
+  maxy := Min(maxy + 2, clip.Bottom);
+  if (maxx <= minx) or (maxy <= miny) or IsNan(minx) or IsNan(miny) then Exit;
+  r := Rect(Floor(minx), Floor(miny), Ceil(maxx), Ceil(maxy));
   area := GrabArea(ACanvas, r);
   if area = nil then Exit;
   ink := Rgb3(AColor);
@@ -197,8 +222,8 @@ begin
           // the canvas's pixel back in the mask (its centre), sampled
           dx := r.Left + x + 0.5 - APX;
           dy := r.Top + y + 0.5 - APY;
-          a := (dx * ux + dy * uy) / ARatio + du + PAD - 0.5;
-          b := dx * vx + dy * vy + dv + PAD - 0.5;
+          a := (dx * ux + dy * uy) / ARatio + du + padX - 0.5;
+          b := dx * vx + dy * vy + dv + padY - 0.5;
           if (a < -1) or (b < -1) or (a > mw) or (b > mh) then Continue;
           ix := Floor(a);
           iy := Floor(b);
@@ -269,8 +294,10 @@ begin
     RtSvgApply(m, t.X, t.Y, px, py);
     // Not a sane place, or far off the canvas (a text is never longer
     // than this): skipped.
-    if IsNan(px) or IsNan(py) or (px < -size * 200) or (py < -size * 200) or
-      (px > ACanvas.Width + size * 200) or (py > ACanvas.Height + size * 200) then Continue;
+    // (Codex review 155) a stretched one reaches as far as it is stretched
+    if IsNan(px) or IsNan(py) or (px < -size * 200 * Max(1, stretch)) or (py < -size * 200 * Max(1, stretch)) or
+      (px > ACanvas.Width + size * 200 * Max(1, stretch)) or (py > ACanvas.Height + size * 200 * Max(1, stretch)) then
+      Continue;
     ang := ArcTan2(m.B, m.A);
     if IsNan(ang) then Continue;
     style := [];
