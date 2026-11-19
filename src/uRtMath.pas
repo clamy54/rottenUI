@@ -80,7 +80,8 @@ begin
   while (r >= AM) and (guard < 100000) do
   begin
     q := AM;
-    while (q <= r / 2) do q := q * 2;
+    // (Codex review 173) r - q, not r / 2: exact for subnormals too
+    while q <= r - q do q := q * 2;
     r := r - q;
     Inc(guard);
   end;
