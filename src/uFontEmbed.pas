@@ -11,6 +11,9 @@ unit uFontEmbed;
 
 interface
 
+uses
+  uRtFont;
+
 type
   IEmbeddedFontManager = interface
     ['{5B0C8F3A-2D71-4E86-9AE4-7C51D20B93F4}']
@@ -32,6 +35,12 @@ function MonaspaceFamilyLabel(AIndex: Integer): string;
 function MonaspaceDefaultFamily: string;
 function MonaspaceTerminalDefaultFamily: string;
 function ResolveMonaspace(const AValue: string): string;
+
+{ The embedded font of family AFamily (its key, full or label name; another
+  name: the default family) in that style, as rottenUI's own reader reads
+  it (uRtFont): the same glyphs on every system. Read once, kept; nil when
+  it cannot be read. }
+function EmbeddedRtFont(const AFamily: string; ABold, AItalic: Boolean): TRtFont;
 
 implementation
 
@@ -175,6 +184,52 @@ begin
   except
     on EResNotFound do Result := nil;
   end;
+end;
+
+var
+  RtFonts: array[0..6, 0..3] of TRtFont;
+  RtFontTried: array[0..6, 0..3] of Boolean;
+
+function EmbeddedRtFont(const AFamily: string; ABold, AItalic: Boolean): TRtFont;
+var
+  fam, style, i: Integer;
+  v: string;
+  rs: TResourceStream;
+  data: RawByteString;
+begin
+  fam := 0;
+  v := Trim(AFamily);
+  for i := 0 to High(FamKeys) do
+    if SameText(v, FamKeys[i]) or SameText(v, FamFull[i]) or SameText(v, FamLabel[i]) then fam := i;
+  style := Ord(ABold) + 2 * Ord(AItalic);
+  if not RtFontTried[fam, style] then
+  begin
+    RtFontTried[fam, style] := True;
+    rs := OpenFontRes(FontRes[fam * 4 + style]);
+    if rs <> nil then
+      try
+        data := '';
+        SetLength(data, rs.Size);
+        if rs.Size > 0 then rs.ReadBuffer(data[1], rs.Size);
+        try
+          RtFonts[fam, style] := TRtFont.Create(data);
+        except
+          RtFonts[fam, style] := nil;
+        end;
+      finally
+        rs.Free;
+      end;
+  end;
+  Result := RtFonts[fam, style];
+end;
+
+procedure FreeRtFonts;
+var
+  f, s: Integer;
+begin
+  for f := 0 to 6 do
+    for s := 0 to 3 do
+      FreeAndNil(RtFonts[f, s]);
 end;
 
 {$IF DEFINED(WINDOWS)}
@@ -419,4 +474,6 @@ begin
   Result := GFontManager;
 end;
 
+finalization
+  FreeRtFonts;
 end.
