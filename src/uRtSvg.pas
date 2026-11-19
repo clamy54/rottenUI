@@ -124,6 +124,23 @@ type
   start, after an optional XML declaration, comments or doctype). }
 function RtSvgSniff(const AData: RawByteString): Boolean;
 
+type
+  TRtSvgIndexes = array of Integer;
+
+const
+  RTSVG_CROP_MAX_BYTES = 24 * 1024 * 1024;
+
+{ The image AM maps (its pixels to a new image's) cropped to 0..AW x 0..AH,
+  written as an SVG of that size: its shapes flattened (curves as short
+  segments) and clipped to it (fills as polygons, strokes segment by
+  segment, a dashed one keeping its phase), with their greys, opacities,
+  widths, caps, joins and dashes; its texts kept whole when their anchor
+  lies inside, each in its place among the shapes. AKept[i]: the new
+  index of text i, -1 when it is left out. Raises ERtSvg beyond
+  RTSVG_CROP_MAX_BYTES. }
+function RtSvgCrop(AImage: TRtSvgImage; const AM: TRtSvgMatrix; AW, AH: Double;
+  out AKept: TRtSvgIndexes): RawByteString;
+
 function RtSvgIdentity: TRtSvgMatrix;
 function RtSvgMatrix(A, B, C, D, E, F: Double): TRtSvgMatrix;
 { AOuter after AInner: a point goes through AInner first. }
@@ -2776,6 +2793,384 @@ begin
     end;
   finally
     ras.Free;
+  end;
+end;
+
+
+{ ------------------------------------------------------------------------
+  An image cropped (RtSvgCrop) }
+
+function RtSvgCrop(AImage: TRtSvgImage; const AM: TRtSvgMatrix; AW, AH: Double;
+  out AKept: TRtSvgIndexes): RawByteString;
+var
+  buf: RawByteString;
+  blen: Integer;
+  f: TFlat;
+  i, ti, newText: Integer;
+  t: TRtSvgMatrix;
+  k: Double;
+  px, py: array of Double;
+  qx, qy: array of Double;
+  d: string;
+
+  function N(AValue: Double): string;
+  begin
+    Result := FormatFloat('0.###', AValue, Dot);
+  end;
+
+  function Grey(ALum: Single): string;
+  var
+    v: Integer;
+  begin
+    v := EnsureRange(Round(ALum * 255), 0, 255);
+    Result := '#' + IntToHex(v, 2) + IntToHex(v, 2) + IntToHex(v, 2);
+  end;
+
+  procedure Put(const S: string);
+  begin
+    if S = '' then Exit;
+    if blen + Length(S) > RTSVG_CROP_MAX_BYTES then TooBig('cropped image');
+    if blen + Length(S) > Length(buf) then SetLength(buf, Max(blen + Length(S), 2 * Length(buf) + 4096));
+    Move(S[1], buf[blen + 1], Length(S));
+    Inc(blen, Length(S));
+  end;
+
+  function Xml(const S: string): string;
+  var
+    c: Integer;
+  begin
+    Result := '';
+    for c := 1 to Length(S) do
+      case S[c] of
+        '&': Result := Result + '&amp;';
+        '<': Result := Result + '&lt;';
+        '>': Result := Result + '&gt;';
+        '"': Result := Result + '&quot;';
+      else
+        if S[c] >= ' ' then Result := Result + S[c];
+      end;
+  end;
+
+  { One polygon (a subpath filled) clipped to the frame (Sutherland-Hodgman,
+    edge by edge), its points left in px / py. }
+  procedure ClipPolygon(const AX, AY: array of Double; AFrom, ACount: Integer; out AOut: Integer);
+  var
+    edge, e, m: Integer;
+    ax0, ay0, ax1, ay1, tt, lim: Double;
+    in0, in1: Boolean;
+
+    function Inside(X, Y: Double): Boolean;
+    begin
+      case edge of
+        0: Result := X >= 0;
+        1: Result := X <= AW;
+        2: Result := Y >= 0;
+      else
+        Result := Y <= AH;
+      end;
+    end;
+
+    procedure Cross(X0, Y0, X1, Y1: Double; out X, Y: Double);
+    begin
+      case edge of
+        0, 1:
+          begin
+            if edge = 0 then lim := 0 else lim := AW;
+            tt := (lim - X0) / (X1 - X0);
+            X := lim;
+            Y := Y0 + (Y1 - Y0) * tt;
+          end;
+      else
+        if edge = 2 then lim := 0 else lim := AH;
+        tt := (lim - Y0) / (Y1 - Y0);
+        X := X0 + (X1 - X0) * tt;
+        Y := lim;
+      end;
+    end;
+
+    procedure Emit(X, Y: Double);
+    begin
+      if m >= Length(qx) then
+      begin
+        SetLength(qx, Max(64, 2 * Length(qx)));
+        SetLength(qy, Length(qx));
+      end;
+      qx[m] := X;
+      qy[m] := Y;
+      Inc(m);
+    end;
+
+  var
+    x, y: Double;
+  begin
+    // the points work in px / py, each edge's result in qx / qy
+    if Length(px) < ACount then
+    begin
+      SetLength(px, ACount);
+      SetLength(py, ACount);
+    end;
+    for e := 0 to ACount - 1 do
+    begin
+      px[e] := AX[AFrom + e];
+      py[e] := AY[AFrom + e];
+    end;
+    AOut := ACount;
+    for edge := 0 to 3 do
+    begin
+      if AOut = 0 then Break;
+      m := 0;
+      for e := 0 to AOut - 1 do
+      begin
+        ax0 := px[e];
+        ay0 := py[e];
+        ax1 := px[(e + 1) mod AOut];
+        ay1 := py[(e + 1) mod AOut];
+        in0 := Inside(ax0, ay0);
+        in1 := Inside(ax1, ay1);
+        if in0 then Emit(ax0, ay0);
+        if in0 <> in1 then
+        begin
+          Cross(ax0, ay0, ax1, ay1, x, y);
+          Emit(x, y);
+        end;
+      end;
+      if Length(px) < m then
+      begin
+        SetLength(px, m);
+        SetLength(py, m);
+      end;
+      for e := 0 to m - 1 do
+      begin
+        px[e] := qx[e];
+        py[e] := qy[e];
+      end;
+      AOut := m;
+    end;
+  end;
+
+  { A segment clipped to the frame (Liang-Barsky): False when it is out. }
+  function ClipSegment(var X0, Y0, X1, Y1: Double): Boolean;
+  var
+    t0, t1, dx, dy: Double;
+
+    function Edge(P, Q: Double): Boolean;
+    var
+      r: Double;
+    begin
+      Result := True;
+      if Abs(P) < 1e-15 then
+      begin
+        if Q < 0 then Result := False;
+        Exit;
+      end;
+      r := Q / P;
+      if P < 0 then
+      begin
+        if r > t1 then Result := False
+        else if r > t0 then t0 := r;
+      end
+      else
+      begin
+        if r < t0 then Result := False
+        else if r < t1 then t1 := r;
+      end;
+    end;
+
+  begin
+    t0 := 0;
+    t1 := 1;
+    dx := X1 - X0;
+    dy := Y1 - Y0;
+    Result := Edge(-dx, X0) and Edge(dx, AW - X0) and Edge(-dy, Y0) and Edge(dy, AH - Y0);
+    if not Result then Exit;
+    X1 := X0 + t1 * dx;
+    Y1 := Y0 + t1 * dy;
+    X0 := X0 + t0 * dx;
+    Y0 := Y0 + t0 * dy;
+  end;
+
+  procedure WriteText(AIndex: Integer);
+  var
+    tx: TRtSvgText;
+    m: TRtSvgMatrix;
+    x, y: Double;
+    attrs: string;
+  begin
+    tx := AImage.Texts[AIndex];
+    m := RtSvgMul(AM, tx.M);
+    RtSvgApply(m, tx.X, tx.Y, x, y);
+    // kept whole when its anchor is inside
+    if IsNan(x) or IsNan(y) or (x < 0) or (y < 0) or (x > AW) or (y > AH) or (tx.Text = '') then Exit;
+    attrs := ' font-size="' + N(tx.Size) + '" fill="' + Grey(tx.Lum) + '"';
+    if tx.Alpha < 0.999 then attrs := attrs + ' fill-opacity="' + N(tx.Alpha) + '"';
+    if tx.Mono then attrs := attrs + ' font-family="monospace"' else attrs := attrs + ' font-family="sans-serif"';
+    if tx.Bold then attrs := attrs + ' font-weight="bold"';
+    if tx.Italic then attrs := attrs + ' font-style="italic"';
+    case tx.Anchor of
+      1: attrs := attrs + ' text-anchor="middle"';
+      2: attrs := attrs + ' text-anchor="end"';
+    end;
+    case tx.Baseline of
+      1: attrs := attrs + ' dominant-baseline="central"';
+      2: attrs := attrs + ' dominant-baseline="hanging"';
+    end;
+    Put('<text x="' + N(tx.X) + '" y="' + N(tx.Y) + '"' + attrs + ' transform="matrix(' + N(m.A) + ' ' + N(m.B) + ' ' +
+      N(m.C) + ' ' + N(m.D) + ' ' + N(m.E) + ' ' + N(m.F) + ')">' + Xml(tx.Text) + '</text>' + LineEnding);
+    AKept[AIndex] := newText;
+    Inc(newText);
+  end;
+
+  procedure WriteTexts(AOrder: Integer);
+  begin
+    // the texts standing before shape AOrder (all those left after the last)
+    while (ti < AImage.TextCount) and ((AImage.Texts[ti].Order <= AOrder) or (AOrder >= AImage.ShapeCount)) do
+    begin
+      WriteText(ti);
+      Inc(ti);
+    end;
+  end;
+
+  procedure WriteShape(AIndex: Integer);
+  var
+    sh: TRtSvgShape;
+    m, e, run, s, cnt: Integer;
+    x0, y0, x1, y1, ax, ay, bx, by, dist, seg, offStart: Double;
+    stroke: string;
+    inRun: Boolean;
+    dash: string;
+
+    procedure Flush(var APath: string; AOffset: Double);
+    begin
+      if APath = '' then Exit;
+      if dash <> '' then
+        Put('<path d="' + APath + '"' + stroke + ' stroke-dashoffset="' + N(sh.DashOffset * k + AOffset) + '"/>' +
+          LineEnding)
+      else
+        Put('<path d="' + APath + '"' + stroke + '/>' + LineEnding);
+      APath := '';
+    end;
+
+  begin
+    sh := AImage.FShapes[AIndex];
+    t := RtSvgMul(AM, sh.M);
+    k := Sqrt(Abs(t.A * t.D - t.B * t.C));
+    if IsNan(k) or (k > 1e12) then Exit;
+    f := Default(TFlat);
+    Flatten(AImage, sh, t, AW, AH, 1e300, f);
+    if f.Bad or (f.Count = 0) then Exit;
+    // nothing of it inside (its stroke counted)
+    if (f.MaxX < -sh.StrokeWidth * k) or (f.MaxY < -sh.StrokeWidth * k) or (f.MinX > AW + sh.StrokeWidth * k) or
+      (f.MinY > AH + sh.StrokeWidth * k) then Exit;
+    if sh.FillAlpha > 0 then
+    begin
+      d := '';
+      for s := 0 to f.Subs - 1 do
+      begin
+        if s < f.Subs - 1 then cnt := f.Starts[s + 1] - f.Starts[s] else cnt := f.Count - f.Starts[s];
+        if cnt < 3 then Continue;
+        ClipPolygon(f.X, f.Y, f.Starts[s], cnt, m);
+        if m < 3 then Continue;
+        d := d + 'M' + N(px[0]) + ' ' + N(py[0]);
+        for e := 1 to m - 1 do d := d + 'L' + N(px[e]) + ' ' + N(py[e]);
+        d := d + 'Z';
+        if Length(d) > RTSVG_CROP_MAX_BYTES then TooBig('cropped image');
+      end;
+      if d <> '' then
+      begin
+        Put('<path d="' + d + '" fill="' + Grey(sh.FillLum) + '"');
+        if sh.FillAlpha < 0.999 then Put(' fill-opacity="' + N(sh.FillAlpha) + '"');
+        if sh.EvenOdd then Put(' fill-rule="evenodd"');
+        Put(' stroke="none"/>' + LineEnding);
+      end;
+    end;
+    if sh.StrokeAlpha > 0 then
+    begin
+      stroke := ' fill="none" stroke="' + Grey(sh.StrokeLum) + '" stroke-width="' + N(sh.StrokeWidth * k) + '"';
+      if sh.StrokeAlpha < 0.999 then stroke := stroke + ' stroke-opacity="' + N(sh.StrokeAlpha) + '"';
+      case sh.Cap of
+        rcRound: stroke := stroke + ' stroke-linecap="round"';
+        rcSquare: stroke := stroke + ' stroke-linecap="square"';
+      end;
+      case sh.Join of
+        rjRound: stroke := stroke + ' stroke-linejoin="round"';
+        rjBevel: stroke := stroke + ' stroke-linejoin="bevel"';
+      else
+        stroke := stroke + ' stroke-miterlimit="' + N(sh.MiterLimit) + '"';
+      end;
+      dash := '';
+      if Length(sh.Dash) > 0 then
+      begin
+        for e := 0 to High(sh.Dash) do
+        begin
+          if e > 0 then dash := dash + ' ';
+          dash := dash + N(sh.Dash[e] * k);
+        end;
+        stroke := stroke + ' stroke-dasharray="' + dash + '"';
+      end;
+      for s := 0 to f.Subs - 1 do
+      begin
+        if s < f.Subs - 1 then cnt := f.Starts[s + 1] - f.Starts[s] else cnt := f.Count - f.Starts[s];
+        if cnt < 2 then Continue;
+        // its segments inside, in runs (a run broken where it leaves the
+        // frame); a dashed run starts at the phase it had there
+        d := '';
+        inRun := False;
+        dist := 0;
+        offStart := 0;
+        if f.Closed[s] then run := cnt else run := cnt - 1;
+        for e := 0 to run - 1 do
+        begin
+          ax := f.X[f.Starts[s] + e];
+          ay := f.Y[f.Starts[s] + e];
+          bx := f.X[f.Starts[s] + (e + 1) mod cnt];
+          by := f.Y[f.Starts[s] + (e + 1) mod cnt];
+          seg := Hypot(bx - ax, by - ay);
+          x0 := ax; y0 := ay; x1 := bx; y1 := by;
+          if ClipSegment(x0, y0, x1, y1) then
+          begin
+            if not inRun then
+            begin
+              if dash <> '' then Flush(d, offStart);
+              offStart := dist + Hypot(x0 - ax, y0 - ay);
+              d := d + 'M' + N(x0) + ' ' + N(y0);
+              inRun := True;
+            end;
+            d := d + 'L' + N(x1) + ' ' + N(y1);
+            // it leaves the frame on this segment: the run ends
+            if (Abs(x1 - bx) > 1e-9) or (Abs(y1 - by) > 1e-9) then inRun := False;
+          end
+          else
+            inRun := False;
+          dist := dist + seg;
+          if Length(d) > RTSVG_CROP_MAX_BYTES then TooBig('cropped image');
+        end;
+        Flush(d, offStart);
+      end;
+    end;
+  end;
+
+begin
+  AKept := nil;
+  SetLength(AKept, AImage.TextCount);
+  for i := 0 to High(AKept) do AKept[i] := -1;
+  if (AW <= 0) or (AH <= 0) or IsNan(AW) or IsNan(AH) or (AW > RTSVG_MAX_SIDE) or (AH > RTSVG_MAX_SIDE) then
+    raise ERtSvg.Create('Unusable frame to crop to');
+  newText := 0;
+  ti := 0;
+  buf := '';
+  blen := 0;
+  begin
+    Put('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + N(AW) + ' ' + N(AH) + '" width="' + N(AW) +
+      '" height="' + N(AH) + '">' + LineEnding);
+    for i := 0 to AImage.ShapeCount - 1 do
+    begin
+      WriteTexts(i);
+      WriteShape(i);
+    end;
+    WriteTexts(MaxInt);
+    Put('</svg>' + LineEnding);
+    SetLength(buf, blen);
+    Result := buf;
   end;
 end;
 

@@ -52,6 +52,8 @@ ICONS = [
     "route", "current-location", "arrows-maximize", "rotate-clockwise",
     # textes d'un plan
     "text-plus", "text-increase", "text-decrease", "arrow-back-up", "arrow-forward-up",
+    # rogner un plan
+    "crop",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
