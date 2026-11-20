@@ -38,6 +38,7 @@ type
     FSortDesc: Boolean;
     FOrder: array of Integer;
     FPlace: array of Integer;
+    FWheelScrolls: Boolean;
     FShowHeader: Boolean;
     FStretchLast: Boolean;
     FRowColor: TColor;
@@ -83,9 +84,13 @@ type
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure HeaderClick(IsColumn: Boolean; index: Integer); override;
     procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    procedure GridMouseWheel(Shift: TShiftState; Delta: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+    { The wheel scrolls the rows, the one selected staying (False, the
+      default: it moves the selection, as before). }
+    property WheelScrolls: Boolean read FWheelScrolls write FWheelScrolls;
     procedure ClearColumns;
     procedure AddColumn(const ACaption: string; AWidth: Integer);
     procedure Clear; virtual;
@@ -930,6 +935,20 @@ begin
   ts.Opaque := False;
   Canvas.TextRect(Classes.Rect(textLeft, ARect.Top, textRight, ARect.Bottom),
     textLeft, ARect.Top, s, ts);
+end;
+
+procedure TRtListGrid.GridMouseWheel(Shift: TShiftState; Delta: Integer);
+var
+  last: Integer;
+begin
+  if not FWheelScrolls or (ssCtrl in Shift) then
+  begin
+    inherited GridMouseWheel(Shift, Delta);
+    Exit;
+  end;
+  // the rows moved under the view, three at a notch; the selection stays
+  last := Max(FixedRows, RowCount - VisibleRowCount);
+  TopRow := EnsureRange(TopRow + 3 * Delta, FixedRows, last);
 end;
 
 end.
