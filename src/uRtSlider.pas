@@ -159,7 +159,7 @@ var
 begin
   FLogarithmic := ALogarithmic and (AMin > 0);
   SetRange(AMin, AMax);
-  // (Codex review 91) Whole values only when the range holds one.
+  // Whole values only when the range holds one.
   FIntegral := AIntegral and (Ceil(FMin) <= Floor(FMax));
   // Marks of an earlier range that this one does not hold: dropped.
   n := 0;
@@ -238,7 +238,7 @@ var
 begin
   if FCompact then
   begin
-    // (Codex review 94) Too narrow for all: the caption goes, then the
+    // Too narrow for all: the caption goes, then the
     // value; the track always stays within the control.
     cy := ClientHeight div 2;
     Result := Rect(PAD_X + CaptionWidth, cy - TRACK_H div 2, ClientWidth - PAD_X - ValueWidth,

@@ -48,7 +48,7 @@ begin
   if (ARaster = nil) or (ARaster.Width <= 0) or (ARaster.Height <= 0) then Exit;
   img := TLazIntfImage.Create(0, 0);
   try
-    // (Codex review 170) its alpha byte said (opaque): Cocoa reads a
+    // its alpha byte said (opaque): Cocoa reads a
     // description without one as RGB, whatever its shifts
     desc.Init_BPP32_B8G8R8A8_BIO_TTB(ARaster.Width, ARaster.Height);
     img.DataDescription := desc;

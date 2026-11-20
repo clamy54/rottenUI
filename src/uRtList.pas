@@ -938,8 +938,6 @@ begin
 end;
 
 procedure TRtListGrid.GridMouseWheel(Shift: TShiftState; Delta: Integer);
-var
-  last: Integer;
 begin
   if not FWheelScrolls or (ssCtrl in Shift) then
   begin
@@ -947,8 +945,8 @@ begin
     Exit;
   end;
   // the rows moved under the view, three at a notch; the selection stays
-  last := Max(FixedRows, RowCount - VisibleRowCount);
-  TopRow := EnsureRange(TopRow + 3 * Delta, FixedRows, last);
+  // (the grid itself keeps the last rows in reach, partly shown ones too)
+  TopRow := Max(FixedRows, TopRow + 3 * Delta);
 end;
 
 end.

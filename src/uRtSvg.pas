@@ -154,12 +154,12 @@ implementation
 uses
   StrUtils, uRtMath;
 
-{ (Codex review 170) degrees within one turn first: a huge rotate() keeps
+{ degrees within one turn first: a huge rotate() keeps
   its fraction of a turn (deterministic). }
 function NormDeg(ADeg: Double): Double;
 begin
   if IsNan(ADeg) or IsInfinite(ADeg) then Exit(0);
-  // (Codex reviews 171, 172) exactly, whatever its size
+  // exactly, whatever its size
   Result := RtFMod(ADeg, 360);
 end;
 
@@ -375,7 +375,7 @@ var
 
   function Find(const AWhat: string): Integer;
   begin
-    // (Codex review 90) From p, never copying the rest of the document.
+    // From p, never copying the rest of the document.
     Result := PosEx(AWhat, S, p);
     if Result = 0 then Broken('unterminated ' + AWhat);
   end;
@@ -923,7 +923,7 @@ var
   i, n, w, lo, mid, hi, a, b, k, c: Integer;
   id: string;
 begin
-  // (Codex review 90) Gathered, then merge-sorted once by id and by place
+  // Gathered, then merge-sorted once by id and by place
   // in the document (the first of duplicated ids wins): never quadratic.
   n := 0;
   SetLength(found, 0);
@@ -1884,7 +1884,7 @@ var
 begin
   name := Doc.Nodes[ANode].Name;
   if name = '' then Exit;
-  // (Codex review 90) Every element walked counts, drawing or not: uses of
+  // Every element walked counts, drawing or not: uses of
   // uses of empty groups cannot multiply without end.
   Inc(Visits);
   if Visits > RTSVG_MAX_VISITS then TooBig('elements drawn');
@@ -2231,7 +2231,7 @@ var
   a: Double;
 begin
   if not (R > 0) then Exit;
-  // (bounded before any conversion: Codex review 90)
+  // (bounded before any conversion)
   if R > 128 then n := 256 else n := Max(8, Ceil(R * 2));
   if Length(Pts) < 2 * n then SetLength(Pts, 2 * n);
   for i := 0 to n - 1 do
@@ -2467,7 +2467,7 @@ begin
           Inc(pt, 6);
           if F.Subs = 0 then begin NewSub; AddPt(x0, y0); end;
           // Segments from the curve's second differences, bounded before
-          // any conversion (Codex review 90); one when off the raster or
+          // any conversion; one when off the raster or
           // past the budget.
           l := Max(Sqrt(Sqr(x0 - 2 * x1 + x2) + Sqr(y0 - 2 * y1 + y2)),
             Sqrt(Sqr(x1 - 2 * x2 + x3) + Sqr(y1 - 2 * y2 + y3)));
@@ -2499,8 +2499,7 @@ end;
 
 { X modulo APeriod (> 0), in [0, APeriod), exact: the multiples of the
   period by powers of two taken off one by one, each subtraction exact
-  (q <= X < 2q). (Codex reviews 91, 92: Floor returns 32 bits, and a
-  quotient then a product loses the remainder of a huge X.) }
+  (q <= X < 2q). (Floor returns 32 bits, and a quotient then a product loses the remainder of a huge X.) }
 function FMod(X, APeriod: Double): Double;
 var
   neg: Boolean;
@@ -2525,7 +2524,7 @@ begin
 end;
 
 { The pieces a dash pattern draws (device lengths), each stroked open.
-  (Codex review 90) Only what lies on the raster (with AMargin) is cut into
+  Only what lies on the raster (with AMargin) is cut into
   dashes: elsewhere the pattern's phase is advanced by arithmetic. }
 procedure DashedStroke(ARas: TRas; const F: TFlat; AFrom, ACount: Integer; AClosed: Boolean;
   const ADash: array of Double; AOffset, HW, AMargin: Double; ACap: TRtSvgCap; AJoin: TRtSvgJoin;
@@ -2560,7 +2559,7 @@ var
   var
     guard: Integer;
   begin
-    // (Codex review 92) Whole periods off first: a short remainder is never
+    // Whole periods off first: a short remainder is never
     // lost against a huge distance.
     AL := FMod(AL, total);
     if AL < remain then
@@ -2661,7 +2660,7 @@ begin
       FlushPiece;
       Advance(la);
     end;
-    // (Codex review 91) Walked from the visible part's own start: far from
+    // Walked from the visible part's own start: far from
     // the segment's start, adding a short dash to a huge distance would not
     // move it. Each period is a pixel at least: the guard is never reached
     // in honest use.
@@ -2671,11 +2670,11 @@ begin
     sy := ay + uy * la;
     vis := lb - la;
     t := 0;
-    // (Codex review 92) A pattern too fine for the length shown (millions
+    // A pattern too fine for the length shown (millions
     // of dashes): that part drawn plain, the phase still carried on.
     if Length(ADash) * (vis / total + 2) > 4e6 then
     begin
-      // (Codex review 93) Added to the piece under way, which goes on when
+      // Added to the piece under way, which goes on when
       // the dash does: its corners keep their joins.
       Put(sx, sy);
       Put(sx + ux * vis, sy + uy * vis);
@@ -2742,7 +2741,7 @@ begin
       margin := 2;
       if FShapes[i].StrokeAlpha > 0 then
         margin := margin + Min(1e7, FShapes[i].StrokeWidth * k * Max(1, FShapes[i].MiterLimit));
-      // (Codex review 91) A dashed stroke needs every length (its phase):
+      // A dashed stroke needs every length (its phase):
       // no curve shortened to its chord off the raster then.
       if (FShapes[i].StrokeAlpha > 0) and (Length(FShapes[i].Dash) > 0) then
         Flatten(Self, FShapes[i], t, ras.W, ras.H, 1e300, f)
@@ -2828,7 +2827,7 @@ var
     Result := FormatFloat('0.###', AValue, Dot);
   end;
 
-  { (Codex review 157) A factor or a size: every digit that counts (a text
+  { A factor or a size: every digit that counts (a text
     of size 50000 drawn at 0.0002 must not vanish). }
   function P(AValue: Double): string;
   begin
@@ -3071,8 +3070,7 @@ var
       Result := not ((AX >= -pad) and (AX <= AW + pad) and (AY >= -pad) and (AY <= AH + pad));
     end;
 
-    { Segment AE of subpath s wholly inside the widened frame: (Codex
-      review 158) both its ends inside, the frame being convex (never the
+    { Segment AE of subpath s wholly inside the widened frame: both its ends inside, the frame being convex (never the
       clipped ends compared, which rounding moves). }
     function SegKept(AE: Integer): Boolean;
     begin
@@ -3143,7 +3141,7 @@ var
     f := Default(TFlat);
     Flatten(AImage, sh, t, AW, AH, 1e300, f);
     if f.Bad or (f.Count = 0) then Exit;
-    // (Codex review 157) Strokes cut beyond the frame by their reach (half
+    // Strokes cut beyond the frame by their reach (half
     // their width, a square cap's corner, a miter's tip): their ink inside
     // the frame stays whole, the new image's edge cuts the rest.
     if sh.StrokeAlpha <= 0 then pad := 0
@@ -3199,10 +3197,10 @@ var
           if e > 0 then dash := dash + ' ';
           dash := dash + N(dashes[e]);
         end;
-        // (Codex review 158) As the painter: finer than a pixel, a plain line.
+        // As the painter: finer than a pixel, a plain line.
         if (period < 1) or IsNan(period) or (period > 1e15) then dash := '';
       end;
-      // (Codex review 157) Translucent dashes drawn here as pieces of one
+      // Translucent dashes drawn here as pieces of one
       // element: their overlaps composited once, as in the original.
       bake := (dash <> '') and (sh.StrokeAlpha < 0.999);
       if (dash <> '') and not bake then stroke := stroke + ' stroke-dasharray="' + dash + '"';
@@ -3256,7 +3254,7 @@ var
             if not inRun then
             begin
               offStart := dist + Hypot(x0 - ax, y0 - ay);
-              // (Codex review 158) Each reduced by the period first: a huge
+              // Each reduced by the period first: a huge
               // offset must not swallow the distance walked.
               if bake then
                 PhaseAt(FMod(sh.DashOffset * k, period) + FMod(offStart, period))

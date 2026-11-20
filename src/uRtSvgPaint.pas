@@ -152,7 +152,7 @@ begin
       tm.tmAscent := Round(AHeight * 0.8);
       tm.tmDescent := Round(AHeight * 0.2);
     end;
-    // (Codex review 155) Room for what overhangs the advance (an italic f,
+    // Room for what overhangs the advance (an italic f,
     // a j), the advance kept for the anchor.
     padX := 2 + Round(0.35 * AHeight);
     padY := 2 + Round(0.1 * AHeight);
@@ -162,7 +162,7 @@ begin
     mask.SetSize(mw, mh);
     SetLength(onWhite, mw * mh);
     SetLength(cover, mw * mh);
-    // (Codex review 155) Its coverage from two drawings, on white then on
+    // Its coverage from two drawings, on white then on
     // black: what a glyph paints opaque counts whole, whatever its colour
     // (a colour font, an emoji), its antialiased edges in proportion.
     Level(clWhite, clBlack);
@@ -202,7 +202,7 @@ begin
   end;
   ux := Cos(AAngle); uy := Sin(AAngle);
   vx := -Sin(AAngle); vy := Cos(AAngle);
-  // (Codex review 155) Its box on the canvas in real numbers, within the
+  // Its box on the canvas in real numbers, within the
   // canvas's clip before it becomes pixels (a huge stretch overflows them).
   minx := MaxDouble; miny := MaxDouble; maxx := -MaxDouble; maxy := -MaxDouble;
   for q := 0 to 3 do
@@ -305,7 +305,7 @@ begin
     RtSvgApply(m, t.X, t.Y, px, py);
     // Not a sane place, or far off the canvas (a text is never longer
     // than this): skipped.
-    // (Codex review 155) a stretched one reaches as far as it is stretched
+    // a stretched one reaches as far as it is stretched
     if IsNan(px) or IsNan(py) or (px < -size * 200 * Max(1, stretch)) or (py < -size * 200 * Max(1, stretch)) or
       (px > ACanvas.Width + size * 200 * Max(1, stretch)) or (py > ACanvas.Height + size * 200 * Max(1, stretch)) then
       Continue;
@@ -393,7 +393,7 @@ begin
   paper := Rgb3(APaper);
   void := Rgb3(AVoid);
   bh := Max(1, BAND_PIXELS div AWidth);
-  // (Codex review 90) Texts stand among the shapes: the shapes are
+  // Texts stand among the shapes: the shapes are
   // painted in layers cut where texts stand, each layer's texts written
   // before the next layer covers them. Beyond MAX_LAYERS, texts on top.
   breaks := nil;
@@ -536,7 +536,7 @@ begin
       ASize := t.Size * across;
     end;
   end;
-  // (Codex review 170) too small to draw is a painter's matter (AMinSize)
+  // too small to draw is a painter's matter (AMinSize)
   if IsNan(ASize) or (ASize < AMinSize) or (ASize > 4000) then Exit;
   AWidth := RtTextWidth(font, t.Text, ASize);
   // narrowed when the SVG asked for a proportional font

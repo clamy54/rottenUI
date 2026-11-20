@@ -159,7 +159,7 @@ end;
 
 function EllipseSteps(ARX, ARY: Double): Integer;
 begin
-  // (Codex review 172) a large one: all the table's steps, before Ceil
+  // a large one: all the table's steps, before Ceil
   if IsNan(ARX) or IsNan(ARY) or (Max(Abs(ARX), Abs(ARY)) > 1000) then Exit(CIRCLE_STEPS);
   // one step about every 2 pixels of its circumference, 8 at least
   Result := EnsureRange(Ceil(Max(Abs(ARX), Abs(ARY)) * Pi / 2), 8, CIRCLE_STEPS);
@@ -270,7 +270,7 @@ begin
       Inc(i);
       Dec(need);
     end;
-    // (Codex review 169) broken, overlong, a surrogate or beyond U+10FFFF
+    // broken, overlong, a surrogate or beyond U+10FFFF
     if (need > 0) or ((k = 1) and (c < $80)) or ((k = 2) and (c < $800)) or ((k = 3) and (c < $10000)) or
       ((c >= $D800) and (c <= $DFFF)) or (c > $10FFFF) then c := $FFFD;
     Result[n] := c;
@@ -523,7 +523,7 @@ begin
       for i := 0 to ne - 1 do
         if (edges[i].Y0 <= ys) and (ys < edges[i].Y1) then
         begin
-          // (Codex review 169) in double: no overflow, and IEEE's correctly
+          // in double: no overflow, and IEEE's correctly
           // rounded operations give the same crossing everywhere
           tx := edges[i].X0 + Trunc(Double(ys - edges[i].Y0) * Double(edges[i].X1 - edges[i].X0) /
             Double(edges[i].Y1 - edges[i].Y0));
@@ -532,7 +532,7 @@ begin
           Inc(nx);
         end;
       if nx < 2 then Continue;
-      // (Codex review 169) sorted in n log n (by x, then direction)
+      // sorted in n log n (by x, then direction)
       SortCrossings(xs, ds, nx, sxs, sds);
       wind := 0;
       was := False;
@@ -730,7 +730,7 @@ begin
       AddDisc(AOut, AX[b], AY[b], AHalf);
       Continue;
     end;
-    // (Codex review 169) a turn back: no miter, no bevel to add
+    // a turn back: no miter, no bevel to add
     if Abs(cross) < 1e-9 then Continue;
     // the outer side: where the line turns away from
     if cross > 0 then
@@ -829,7 +829,7 @@ var
 begin
   if (AColor shr 24 = 0) or not (AWidth > 0) or (APath.Count < 1) then Exit;
   outline := Default(TRtPath);
-  // (Codex review 169) an odd pattern repeated twice: on and off alternate
+  // an odd pattern repeated twice: on and off alternate
   nd := Length(ADash);
   if Odd(nd) then nd := 2 * nd;
   SetLength(dash, nd);
@@ -848,7 +848,7 @@ begin
       Continue;
     end;
     // dashed: the runs on, each an open line
-    // (Codex review 172) the phase exactly within a period, whatever the offset
+    // the phase exactly within a period, whatever the offset
     pos := RtFMod(ADashOffset, total);
     di := 0;
     guard := 0;
@@ -885,7 +885,7 @@ begin
       if on_ then AddRun(bx, by);
     end;
     if on_ and (nr > 0) then runs[nr - 1].ToEnd := True;
-    // (Codex review 169) a closed contour: the last run goes on into the
+    // a closed contour: the last run goes on into the
     // first across the seam; all of it on, it is stroked closed
     if AClosed and (nr >= 1) and runs[0].FromStart and runs[nr - 1].ToEnd then
     begin
@@ -1009,7 +1009,7 @@ begin
   if IsNan(co) or IsNan(si) then Exit;
   if Abs(co) < 1e-15 then co := 0;
   if Abs(si) < 1e-15 then si := 0;
-  // (Codex review 170) the same bound as the measure (RtTextStretch)
+  // the same bound as the measure (RtTextStretch)
   AStretch := RtTextStretch(AStretch);
   flat := Default(TRtFlatGlyph);
   pen := 0;
@@ -1061,7 +1061,7 @@ begin
   if (ASrcW <= 0) or (ASrcH <= 0) or (Length(ASrc) < ASrcW * ASrcH) or not (ADW > 0) or not (ADH > 0) or
     not (ASW > 0) or not (ASH > 0) then Exit;
   // (Floor and Ceil are 32 bits: the place kept within reach first;
-  // Codex review 172: a size of nothing, nothing drawn)
+  // a size of nothing, nothing drawn)
   if (Abs(ADX) > 1e8) or (Abs(ADY) > 1e8) or (ADW > 1e8) or (ADH > 1e8) or (ADW < 1e-6) or (ADH < 1e-6) or
     (ASW > 1e8) or (ASH > 1e8) or (Abs(ASX) > 1e8) or (Abs(ASY) > 1e8) then Exit;
   x0 := Max(FClipX0, Floor(ADX));
@@ -1072,7 +1072,7 @@ begin
   for y := y0 to y1 - 1 do
   begin
     // the source point of this pixel's centre, minus half a source pixel
-    // (Codex review 172) kept within the source's edges before any conversion
+    // kept within the source's edges before any conversion
     syF := Round(EnsureRange(ASY + (y + 0.5 - ADY) * ASH / ADH, -2, ASrcH + 2) * 65536) - 32768;
     iy := Integer(Floor(syF / 65536));
     fy := Integer(syF - Int64(iy) * 65536) shr 8;     // 0..255
@@ -1114,7 +1114,7 @@ procedure InitTables;
 var
   i: Integer;
 begin
-  // (Codex review 169) rottenUI's own trigonometry: the same table on
+  // rottenUI's own trigonometry: the same table on
   // every system (the platform's last bits moved a pixel)
   for i := 0 to CIRCLE_STEPS do
   begin

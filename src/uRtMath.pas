@@ -61,7 +61,7 @@ const
 
 function RtFloor(X: Double): Double;
 begin
-  // (Codex review 172) a zero keeps its sign, as every library does not
+  // a zero keeps its sign, as every library does not
   if X = 0 then Exit(X);
   Result := Int(X);
   if (X < 0) and (Result <> X) then Result := Result - 1;
@@ -73,14 +73,14 @@ var
   guard: Integer;
 begin
   if IsNan(X) or IsInfinite(X) or IsNan(AM) or not (AM > 0) or IsInfinite(AM) then Exit(0);
-  // (Codex review 172) exact: multiples of AM by powers of two taken off,
+  // exact: multiples of AM by powers of two taken off,
   // each subtraction exact (q <= r < 2 q)
   r := Abs(X);
   guard := 0;
   while (r >= AM) and (guard < 100000) do
   begin
     q := AM;
-    // (Codex review 173) r - q, not r / 2: exact for subnormals too
+    // r - q, not r / 2: exact for subnormals too
     while q <= r - q do q := q * 2;
     r := r - q;
     Inc(guard);
@@ -95,7 +95,7 @@ var
   k: Double;
 begin
   // A large angle (beyond the turns a drawing uses) brought within a turn
-  // exactly modulo the double nearest 2 pi (Codex reviews 170 to 172):
+  // exactly modulo the double nearest 2 pi:
   // the same everywhere, though not the true sine of so many turns.
   if Abs(X) > 1e5 then X := RtFMod(X, TWOPI_1);
   k := RtFloor(X * TWO_O_PI + 0.5);
@@ -186,7 +186,7 @@ begin
   if IsNan(X) or IsNan(Y) then Exit(NaN);
   ax := Abs(X);
   ay := Abs(Y);
-  // (Codex review 170) infinities and signed zeros as IEEE says
+  // infinities and signed zeros as IEEE says
   if IsInfinite(ay) and IsInfinite(ax) then a := PIO4_D
   else if IsInfinite(ay) then a := PI_D / 2
   else if IsInfinite(ax) or (ay = 0) then a := 0

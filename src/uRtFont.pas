@@ -197,7 +197,7 @@ begin
     for i := 0 to n - 1 do
     begin
       rec := cmap + 4 + 8 * i;
-      // (Codex review 169) the record and its subtable within the table
+      // the record and its subtable within the table
       if rec + 8 > cmap + len then Break;
       if U32(rec + 4) > Cardinal(len) then Continue;
       sub := cmap + Integer(U32(rec + 4));
@@ -316,7 +316,7 @@ begin
     end;
   end;
   except
-    // (Codex review 169) a damaged cmap: no glyph, never an error at each frame
+    // a damaged cmap: no glyph, never an error at each frame
     on ERtFont do Result := 0;
   end;
   if (Result < 0) or (Result >= FNumGlyphs) then Result := 0;
@@ -384,7 +384,7 @@ var
   m: array[0..5] of Double;
 begin
   if ADepth > 8 then raise ERtFont.Create('font: composite glyphs too deep');
-  // (Codex review 169) every glyph visited counted, empty ones too
+  // every glyph visited counted, empty ones too
   Dec(ABudget);
   if ABudget < 0 then raise ERtFont.Create('font: a glyph of too many components');
   if (AGlyph < 0) or (AGlyph >= FNumGlyphs) then Exit;
@@ -549,7 +549,7 @@ begin
         dd := I16(p + 6) / 16384;
         Inc(p, 8);
       end;
-      // (Codex review 169) an offset scaled by the component's matrix when
+      // an offset scaled by the component's matrix when
       // the font says so (else, as Microsoft's default, not)
       if (cf and SCALED_OFFSET <> 0) and (cf and UNSCALED_OFFSET = 0) then
       begin
@@ -567,7 +567,7 @@ begin
       m[5] := AM[1] * e + AM[3] * f + AM[5];
       compStart := AOut.Count;
       ReadGlyph(gi, ADepth + 1, AOut, m, ABudget);
-      // (Codex review 169) matched points: the component moved so that its
+      // matched points: the component moved so that its
       // point pc lies on the glyph's point pa
       if matched and (glyphStart + pa < compStart) and (compStart + pc < AOut.Count) then
       begin
