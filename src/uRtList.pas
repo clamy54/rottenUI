@@ -775,13 +775,20 @@ begin
 end;
 
 procedure TRtListGrid.HeaderClick(IsColumn: Boolean; index: Integer);
+var
+  wasRange: Boolean;
 begin
   inherited HeaderClick(IsColumn, index);
   if not FSortable or not IsColumn or (index < 0) or (index >= ColCount) then Exit;
+  wasRange := MultiSelect and (Selection.Bottom > Selection.Top);
   if index = FSortCol then
     SortBy(index, not FSortDesc)
   else
     SortBy(index, False);
+  // Le tri ramene une plage a la ligne courante: l'application l'apprend
+  // (un compteur de selection), meme si cette ligne n'a pas change.
+  if wasRange and Assigned(FOnSelectRow) and (ItemIndex >= 0) then
+    FOnSelectRow(Self, ItemIndex);
 end;
 
 procedure TRtListGrid.Clear;
