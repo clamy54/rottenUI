@@ -61,8 +61,6 @@ type
     function GetMultiSelect: Boolean;
     procedure CollapseSelection;
     procedure SetMultiSelect(AValue: Boolean);
-    function DataIndex(ADisplay: Integer): Integer;
-    function DisplayIndex(AData: Integer): Integer;
     procedure ApplySort;
     procedure ApplySortKeeping(ASel: Integer);
     procedure SetCount(AValue: Integer);
@@ -112,6 +110,10 @@ type
     property OnGetCellIcon: TRtGetCellIconEvent read FOnGetCellIcon write FOnGetCellIcon;
     function CellIcon(AIndex, ACol: Integer; out AColor: TColor): string;
     procedure SortBy(ACol: Integer; ADescending: Boolean);
+    // L'element (index des donnees) affiche a la ligne ADisplay (0 = la premiere), et
+    // la ligne d'un element: l'ordre du tri, pour se deplacer comme on voit la liste.
+    function DataIndex(ADisplay: Integer): Integer;
+    function DisplayIndex(AData: Integer): Integer;
     property Sortable: Boolean read FSortable write FSortable;
     // Le tri d'une colonne par l'application (un ordre naturel des codes...);
     // sinon des entiers comme nombres, le reste comme textes.
