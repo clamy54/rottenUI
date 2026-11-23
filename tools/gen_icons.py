@@ -54,6 +54,8 @@ ICONS = [
     "text-plus", "text-increase", "text-decrease", "arrow-back-up", "arrow-forward-up",
     # rogner un plan
     "crop",
+    # enregistrer un document
+    "device-floppy",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
