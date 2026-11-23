@@ -17,6 +17,8 @@ type
   TRtIndexArray = array of Integer;
   TRtGetCellEvent = function(Sender: TObject; AIndex, ACol: Integer): string of object;
   TRtSelectEvent = procedure(Sender: TObject; AIndex: Integer) of object;
+  // Deux textes d'une colonne compares pour le tri (<0, 0, >0).
+  TRtCompareCellsEvent = function(Sender: TObject; ACol: Integer; const A, B: string): Integer of object;
   TRtGetCellIconEvent = function(Sender: TObject; AIndex, ACol: Integer;
     out AColor: TColor): string of object;
 
@@ -33,6 +35,7 @@ type
     FFitting: Boolean;
     FOnActivateRow: TRtSelectEvent;
     FOnGetCellIcon: TRtGetCellIconEvent;
+    FOnCompareCells: TRtCompareCellsEvent;
     FSortable: Boolean;
     FSortCol: Integer;
     FSortDesc: Boolean;
@@ -110,6 +113,9 @@ type
     function CellIcon(AIndex, ACol: Integer; out AColor: TColor): string;
     procedure SortBy(ACol: Integer; ADescending: Boolean);
     property Sortable: Boolean read FSortable write FSortable;
+    // Le tri d'une colonne par l'application (un ordre naturel des codes...);
+    // sinon des entiers comme nombres, le reste comme textes.
+    property OnCompareCells: TRtCompareCellsEvent read FOnCompareCells write FOnCompareCells;
     property SortedColumn: Integer read FSortCol;
     property SortedDescending: Boolean read FSortDesc;
     property ShowHeader: Boolean read FShowHeader write SetShowHeader;
@@ -713,7 +719,10 @@ begin
         k := lo;
         while (a < mid) and (b < hi) do
         begin
-          c := CompareCellTexts(keys[src[a]], keys[src[b]]);
+          if Assigned(FOnCompareCells) then
+            c := FOnCompareCells(Self, FSortCol, keys[src[a]], keys[src[b]])
+          else
+            c := CompareCellTexts(keys[src[a]], keys[src[b]]);
           if FSortDesc then c := -c;
           if c <= 0 then
           begin
