@@ -56,6 +56,8 @@ ICONS = [
     "crop",
     # enregistrer un document
     "device-floppy",
+    # selectionner par un cadre
+    "marquee-2",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
