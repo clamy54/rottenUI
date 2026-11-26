@@ -58,6 +58,8 @@ ICONS = [
     "device-floppy",
     # selectionner par un cadre
     "marquee-2",
+    # redresser un plan
+    "angle",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
